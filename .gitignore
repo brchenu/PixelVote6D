@@ -1,1 +1,3 @@
-LINEMOD/
+dataset/
+.python-version
+.venv/
