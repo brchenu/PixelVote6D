@@ -1,1 +1,5 @@
 numpy
+Pillow
+opencv-python
+open3d
+orjson
