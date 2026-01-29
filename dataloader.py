@@ -90,7 +90,7 @@ def load_data(scene: str, obj_id: int, dataset: str = "lm"):
     for idx, img_filename in enumerate(img_files):
         img_path = os.path.join(rgb_dir, img_filename)
         img = cv2.imread(img_path)
-        
+
         if img is None:
             print(f"Warning: Could not load image {img_path}")
             continue
@@ -105,12 +105,6 @@ def load_data(scene: str, obj_id: int, dataset: str = "lm"):
         if R is None or t is None:
             print(f"Warning: Object {obj_id} not found in frame {idx}")
             continue
-
-        # Project keypoints to 2D
-        projected_keypoints = project_points(keypoints, K, R, t)
-
-        # Draw keypoints on image
-        img = draw_keypoints(img, projected_keypoints)
 
         mask_filename = masks.get(str(idx))
         mask_path = os.path.join(train_dir, "mask", mask_filename)
