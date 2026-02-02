@@ -51,7 +51,6 @@ if __name__ == "__main__":
     for idx, (keypoints, img, mask, K, R, t) in enumerate(
         load_data(args.dataset, args.scene, args.obj_id)
     ):
-
         project_keypoints = project_points(keypoints, K, R, t)
 
         vector_field = generate_vector_field(
@@ -65,23 +64,14 @@ if __name__ == "__main__":
             )
         else:
             # Save generated data only when not in debug mode
-            curr_dir = os.path.join(args.output, str(idx).zfill(6))
-            if not os.path.exists(curr_dir):
-                os.makedirs(curr_dir)
+            curr_dir = os.path.join(args.output, f"s{args.scene}_idx{str(idx).zfill(6)}")
+            os.makedirs(curr_dir, exist_ok=True)
 
-            np.save(
-                os.path.join(curr_dir, f"vector_field_{str(idx).zfill(6)}.npy"),
-                vector_field,
-            )
-            np.save(os.path.join(curr_dir, f"image_{str(idx).zfill(6)}.npy"), img)
-            np.save(os.path.join(curr_dir, f"mask_{str(idx).zfill(6)}.npy"), mask)
-            np.save(
-                os.path.join(curr_dir, f"keypoints_{str(idx).zfill(6)}.npy"),
-                project_keypoints,
-            )
+            np.save(os.path.join(curr_dir, "vector_field.npy"), vector_field)
+            np.save(os.path.join(curr_dir, "image.npy"), img)
+            np.save(os.path.join(curr_dir, "mask.npy"), mask)
+            np.save(os.path.join(curr_dir, "keypoints.npy"), project_keypoints)
             np.savez(
-                os.path.join(curr_dir, f"camera_params_{str(idx).zfill(6)}.npz"),
-                K=K,
-                R=R,
-                t=t,
+                os.path.join(curr_dir, "camera_params.npz"),
+                K=K, R=R, t=t
             )
