@@ -1,7 +1,9 @@
 import os
 import argparse
 import numpy as np
-from bop_toolkit.dataloader import load_data, project_points
+from bop_toolkit.dataloader import load_data
+from utils.vector_field import generate_vector_field
+from utils.algebra import project_points
 
 
 if __name__ == "__main__":

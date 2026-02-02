@@ -1,3 +1,4 @@
 dataset/
 .python-version
 .venv/
+__pycache__/

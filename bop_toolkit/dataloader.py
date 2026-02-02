@@ -3,7 +3,7 @@ import re
 import numpy as np
 import cv2
 import orjson
-from mask_finder import find_masks_for_object
+from bop_toolkit.mask_finder import find_masks_for_object
 
 
 def get_Rt(poses: list, obj_id: int) -> tuple:
