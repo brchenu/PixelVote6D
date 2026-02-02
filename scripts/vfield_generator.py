@@ -7,11 +7,33 @@ from utils.algebra import project_points
 
 
 if __name__ == "__main__":
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("-d", "--dataset", type=str, help="Dataset directory")
-    argparser.add_argument("-s", "--scene", type=str, help="Scene folder name")
-    argparser.add_argument("-id", "--obj_id", type=int, help="BOP object ID")
-    argparser.add_argument("-o", "--output", type=str, help="Output directory")
+    argparser = argparse.ArgumentParser(
+        description="Generate vector fields from BOP dataset for PVNet training"
+    )
+    argparser.add_argument(
+        "-d",
+        "--dataset",
+        type=str,
+        required=True,
+        help="Dataset directory (e.g., dataset/lm)",
+    )
+    argparser.add_argument(
+        "-s",
+        "--scene",
+        type=str,
+        required=True,
+        help="Scene folder name (e.g., 000010)",
+    )
+    argparser.add_argument(
+        "-id", "--obj_id", type=int, required=True, help="BOP object ID (e.g., 10)"
+    )
+    argparser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        required=True,
+        help="Output directory for generated data",
+    )
     args = argparser.parse_args()
 
     if not os.path.exists(args.output):
