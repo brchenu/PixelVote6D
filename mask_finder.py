@@ -3,7 +3,7 @@ import sys
 import orjson
 
 
-def find_masks_for_object(scene_folder: str, obj_id: int, dataset: str = "lm") -> dict:
+def find_masks_for_object(dataset_dir: str, scene_folder: str, obj_id: int) -> dict:
     """Find all mask files containing a specific object ID in a scene folder.
 
     Args:
@@ -14,7 +14,7 @@ def find_masks_for_object(scene_folder: str, obj_id: int, dataset: str = "lm") -
     Returns:
         Dictionary mapping scene_id -> mask filename
     """
-    scene_path = os.path.join("dataset", dataset, "train_pbr", scene_folder)
+    scene_path = os.path.join(dataset_dir, "train_pbr", scene_folder)
     scene_gt_path = os.path.join(scene_path, "scene_gt.json")
 
     if not os.path.exists(scene_gt_path):
@@ -51,27 +51,3 @@ def print_results(mask_files: dict, obj_id: int, scene_folder: str):
 
     for scene_id in sorted(mask_files.keys(), key=int):
         print(f"  Scene {scene_id}: {mask_files[scene_id]}")
-
-
-def main():
-    if len(sys.argv) < 3:
-        print("Usage: python mask_finder.py <scene_folder> <obj_id> [dataset]")
-        print("Example: python mask_finder.py 000010 10")
-        print("Example: python mask_finder.py 000001 5 lmo")
-        sys.exit(1)
-
-    scene_folder = sys.argv[1]
-    obj_id = int(sys.argv[2])
-    dataset = sys.argv[3] if len(sys.argv) > 3 else "lm"
-
-    try:
-        mask_files = find_masks_for_object(scene_folder, obj_id, dataset)
-        # print_results(mask_files, obj_id, scene_folder)
-        print(mask_files)
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
