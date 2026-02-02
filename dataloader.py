@@ -55,7 +55,7 @@ def get_Rt(poses: list, obj_id: int) -> tuple:
     return None, None
 
 
-def load_data(scene: str, obj_id: int, dataset: str = "lm"):
+def load_data(dataset_dir: str, scene: str, obj_id: int):
     """Generator that yields training samples for a specific object.
     
     Args:
@@ -65,13 +65,12 @@ def load_data(scene: str, obj_id: int, dataset: str = "lm"):
     Yields:
         Tuple of (keypoints_3d, annotated_image, K, R, t)
     """
-    BASE_DIR = os.path.join("dataset", dataset)
 
     # Load 3D keypoints
-    keypoints_path = os.path.join(BASE_DIR, "models", f"obj_{str(obj_id).zfill(6)}_keypoints.txt")
+    keypoints_path = os.path.join(dataset_dir, "models", f"obj_{str(obj_id).zfill(6)}_keypoints.txt")
     keypoints = np.loadtxt(keypoints_path)
 
-    train_dir = os.path.join(BASE_DIR, "train_pbr", scene)
+    train_dir = os.path.join(dataset_dir, "train_pbr", scene)
     pose_file = os.path.join(train_dir, "scene_gt.json")
     camera_file = os.path.join(train_dir, "scene_camera.json")
 
@@ -82,7 +81,7 @@ def load_data(scene: str, obj_id: int, dataset: str = "lm"):
     with open(pose_file, "rb") as f:
         poses = orjson.loads(f.read())
 
-    masks = find_masks_for_object(scene, obj_id, dataset)
+    masks = find_masks_for_object(dataset_dir, scene, obj_id)
 
     rgb_dir = os.path.join(train_dir, "rgb")
     img_files = sorted(os.listdir(rgb_dir))
