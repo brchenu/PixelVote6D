@@ -64,7 +64,7 @@ if __name__ == "__main__":
             )
         else:
             # Save generated data only when not in debug mode
-            curr_dir = os.path.join(args.output, f"s{args.scene}_idx{str(idx).zfill(6)}")
+            curr_dir = os.path.join(args.output, f"scene_{args.scene}", f"{idx:06d}")
             os.makedirs(curr_dir, exist_ok=True)
 
             np.save(os.path.join(curr_dir, "vector_field.npy"), vector_field)

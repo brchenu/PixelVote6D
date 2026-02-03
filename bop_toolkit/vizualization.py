@@ -8,7 +8,8 @@ def show_vector_field(
     vector_field: np.ndarray,
     keypoints: np.ndarray,
     step: int = 20,
-    scale_mode: str = "normalized"
+    scale_mode: str = "normalized", 
+    mask_img: bool = True
 ):
     """
     Visualize the vector field on the image with keypoints.
@@ -27,9 +28,13 @@ def show_vector_field(
     
     for i, point in enumerate(keypoints):
         # Create a fresh copy for each keypoint to avoid accumulation
-        img_masked = img_masked_base.copy()
+        if mask_img:
+            displayed_img = img_masked_base.copy()
+        else:
+            displayed_img = img.copy()
+
         x, y = int(point[0]), int(point[1])
-        cv2.circle(img_masked, (x, y), 4, (0, 255, 0), -1)
+        cv2.circle(displayed_img, (x, y), 4, (0, 255, 0), -1)
 
         # Draw vector field arrows
         for row in range(0, img.shape[0], step):
@@ -47,7 +52,7 @@ def show_vector_field(
                     vy = vector_field[row, col, i * 2 + 1]
                 
                 cv2.arrowedLine(
-                    img_masked,
+                    displayed_img,
                     (col, row),
                     (int(col + vx), int(row + vy)),
                     (255, 0, 0),
@@ -55,7 +60,7 @@ def show_vector_field(
                     tipLength=ARROW_TIP_LENGTH,
                 )
 
-        cv2.imshow(f"Vector Field - Keypoint {i+1}/{len(keypoints)}", img_masked)
+        cv2.imshow(f"Vector Field - Keypoint {i+1}/{len(keypoints)}", displayed_img)
         key = cv2.waitKey(0)
         if key == 27:  # ESC key to exit
             break
