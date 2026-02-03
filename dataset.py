@@ -1,6 +1,7 @@
 import torch
 import os
 import numpy as np
+from PIL import Image
 
 
 class BOPDataset(torch.utils.data.Dataset):
@@ -22,6 +23,9 @@ class BOPDataset(torch.utils.data.Dataset):
         mask = np.load(os.path.join(sample_path, self.mask_file))
         keypoints = np.load(os.path.join(sample_path, self.kp_file))
         vector_field = np.load(os.path.join(sample_path, self.vfield_file))
+
+        # Convert numpy array to PIL Image for torchvision transforms compatibility
+        image = Image.fromarray(image.astype('uint8'))
 
         return cam_params, image, mask, keypoints, vector_field
 
