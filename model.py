@@ -3,16 +3,24 @@ import torch
 from torch import nn
 from PIL import Image
 import torchvision.models as models
-from torchvision import transforms as T
 from pathlib import Path
 from dataset import BOPDataset
+import visualtorch
+import torchinfo
 
 BASE_DIR = Path(__file__).resolve().parent
 
 # random_data_path = os.path.join(BASE_DIR, "dataset", "custom", "random")
 
-resnet18 = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1, progress=True)
-print(resnet18)
+# resnet18 = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1, progress=True)
+# torchinfo.summary(resnet18, input_size=(1, 3, 224, 224))
+
+# img = visualtorch.layered_view(resnet18, input_shape=(1, 3, 224, 224), legend=True, draw_volume=False)
+# print(type(img))
+
+# img.save(os.path.join(BASE_DIR, "resnet18_architecture_flat.png"))
+
+# torch.save(resnet18.state_dict(), os.path.join(BASE_DIR, "resnet18_weights.pth"))
 # transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
 
 # teapot = Image.open(os.path.join(random_data_path, "teapot.webp"))
@@ -30,6 +38,7 @@ print(resnet18)
 
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels: int, skip_channels: int, out_channels: int):
+        super().__init__()
         self.layers = nn.Sequential(
             nn.Conv2d(
                 in_channels + skip_channels, out_channels, kernel_size=3, padding=1
@@ -40,9 +49,10 @@ class DecoderBlock(nn.Module):
         self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
     def forward(self, x, skip):
+        print(f"DecoderBlock input x shape: {x.shape}, skip shape: {skip.shape}")
+        x = self.upsample(x)
         x = torch.cat([x, skip], dim=1)
-        x = self.layers(x)
-        out = self.upsample(x)
+        out = self.layers(x)
         return out
 
 
@@ -70,15 +80,11 @@ class PVNet(nn.Module):
         self.decoder3 = DecoderBlock(128, 64, 64)
         self.decoder4 = DecoderBlock(64, 64, 64)
 
-        self.head = nn.Sequential(
-            nn.Conv2d(64, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 3, kernel_size=1),
-        )
+        self.mask_head = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
+        self.vfield_head = nn.Conv2d(64, 16, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
-        x0 = self.conv1(x)    # 1/2 resolution
+        x0 = self.conv1(x)  # 1/2 resolution
         x1 = self.layer1(x0)  # 1/4 resolution
         x2 = self.layer2(x1)  # 1/8 resolution
         x3 = self.layer3(x2)  # 1/16 resolution
@@ -93,7 +99,7 @@ class PVNet(nn.Module):
         x7 = self.decoder3(x=x6, skip=x1)
         x8 = self.decoder4(x=x7, skip=x0)
 
-        return self.head(x8)
+        return self.mask_head(x8), self.vfield_head(x8)
 
 
 transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
@@ -109,6 +115,7 @@ tensor_image = transforms(image).unsqueeze(0)
 print(f"tensor image shape: {tensor_image.shape} ")
 
 pvnet = PVNet()
-pvnet.eval()
+torchinfo.summary(pvnet, input_size=(1, 3, 224, 224)) 
+# pvnet.eval()
 
-pvnet(tensor_image)
+# pvnet(tensor_image)
