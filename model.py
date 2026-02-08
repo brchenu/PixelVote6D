@@ -40,9 +40,6 @@ BASE_DIR = Path(__file__).resolve().parent
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels: int, skip_channels: int, out_channels: int):
         super().__init__()
-
-        self.cin = in_channels
-        self.cskip = skip_channels
         self.layers = nn.Sequential(
             nn.Conv2d(
                 in_channels + skip_channels,
@@ -57,10 +54,7 @@ class DecoderBlock(nn.Module):
         self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
     def forward(self, x, skip):
-        print(f"DecoderBlock input x shape: {x.shape}, skip shape: {skip.shape}")
         x = torch.cat([x, skip], dim=1)
-        print(f"After concatenation: {x.shape}")
-        print(f"expected in_channels: {self.cin}, expected skip_channels: {self.cskip}")
         x = self.layers(x)
         out = self.upsample(x)
         return out
@@ -105,10 +99,6 @@ class PVNet(nn.Module):
         self.backbone.layer3[0].downsample[0].stride = (1, 1)
         self.layer3 = self.backbone.layer3
 
-        # Print layer3 to check the changes
-        print("Layer3 after modifications:")
-        print(self.backbone.layer3)
-
         for module in self.backbone.layer4.modules():
             if isinstance(module, nn.Conv2d):
                 if module.kernel_size == (1, 1):
@@ -151,7 +141,6 @@ class PVNet(nn.Module):
         # Encoder (ResNet blocks)
         x1 = self.layer1(x0_pool)  # (64,  H/4, W/4), skip for decoder2
         x2 = self.layer2(x1)  # (128, H/8, W/8), skip for decoder1
-        print(f"x2 shape: {x2.shape}")
         x3 = self.layer3(x2)  # (256, H/8, W/8)
         x4 = self.layer4(x3)  # (512, H/8, W/8)
 
