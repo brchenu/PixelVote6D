@@ -54,7 +54,6 @@ class DecoderBlock(nn.Module):
         self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
     def forward(self, x, skip):
-        print(f"DecoderBlock input x shape: {x.shape}, skip shape: {skip.shape}")
         x = self.upsample(x)
         x = torch.cat([x, skip], dim=1)
         out = self.layers(x)
@@ -80,8 +79,13 @@ class PVNet(nn.Module):
 
         # Set dilation for layer3 and layer4
 
+        print(self.backbone.layer3)
+
         for module in self.backbone.layer3.modules():
             if isinstance(module, nn.Conv2d):
+                if module.kernel_size == (1, 1):
+                    continue  # Used to skip downsample
+
                 module.dilation = (2, 2)
                 # Paddig set to 2 because:
                 # padding = dilation * (kernel_size - 1) // 2
@@ -95,11 +99,18 @@ class PVNet(nn.Module):
         self.backbone.layer3[0].downsample[0].stride = (1, 1)
         self.layer3 = self.backbone.layer3
 
+        # Print layer3 to check the changes
+        print("Layer3 after modifications:")
+        print(self.backbone.layer3)
+
         for module in self.backbone.layer4.modules():
             if isinstance(module, nn.Conv2d):
+                if module.kernel_size == (1, 1):
+                    continue  # Used to skip downsample
+
+                module.stride = (1, 1)
                 module.dilation = (4, 4)
                 module.padding = (4, 4)
-                module.stride = (1, 1)
 
         # Same has layer3
         self.backbone.layer4[0].downsample[0].stride = (1, 1)
@@ -134,19 +145,22 @@ class PVNet(nn.Module):
         # Encoder (ResNet blocks)
         x1 = self.layer1(x0_pool)  # (64,  H/4, W/4), skip for decoder2
         x2 = self.layer2(x1)  # (128, H/8, W/8), skip for decoder1
+        print(f"x2 shape: {x2.shape}")
         x3 = self.layer3(x2)  # (256, H/8, W/8)
         x4 = self.layer4(x3)  # (512, H/8, W/8)
 
         x5 = self.bottleneck(x4)  # (256, H/8, W/8)
 
         # Decoder with skip connections
-        d1 = self.decoder1(x=x5, skip=x3)  # (128, H/8, W/8)
-        d2 = self.decoder2(x=d1, skip=x2)  # (64, H/8, W/8)
-        d3 = self.decoder3(x=d2, skip=x1)  # (32, H/4, W/4)
-        d4 = self.head(x=d3, skip=x0)  # (18,  H/2, W/2)
+        d1 = self.decoder1(x=x5, skip=x3)  # (128, H/4, W/4)
+        d2 = self.decoder2(x=d1, skip=x2)  # (64, H/2, W/2)
+        d3 = self.decoder3(x=d2, skip=x1)  # (32, H, W)
 
-        mask = d4[:, : self.mask_channels, :, :]
-        vfield = d4[:, self.mask_channels :, :, :]
+        d4 = torch.cat([d3, x], dim=1)
+        out = self.head(d4)  # (18, H, W)
+
+        mask = out[:, : self.mask_channels, :, :]
+        vfield = out[:, self.mask_channels :, :, :]
 
         return mask, vfield
 
