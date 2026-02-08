@@ -5,7 +5,6 @@ from PIL import Image
 import torchvision.models as models
 from pathlib import Path
 from dataset import BOPDataset
-import visualtorch
 import torchinfo
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -14,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # resnet18 = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1, progress=True)
 # torchinfo.summary(resnet18, input_size=(1, 3, 224, 224))
+
+# print(resnet18)
 
 # img = visualtorch.layered_view(resnet18, input_shape=(1, 3, 224, 224), legend=True, draw_volume=False)
 # print(type(img))
@@ -41,7 +42,11 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv2d(
-                in_channels + skip_channels, out_channels, kernel_size=3, padding=1
+                in_channels + skip_channels,
+                out_channels,
+                kernel_size=3,
+                stride=1,
+                padding=1,
             ),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
@@ -63,59 +68,103 @@ class PVNet(nn.Module):
             weights=models.ResNet18_Weights.IMAGENET1K_V1, progress=True
         )
 
+        self.mask_channels = 1
+        self.vfield_channels = 16
+
         self.conv1 = self.backbone.conv1
-        self.layer0 = nn.Sequential(
-            self.backbone.conv1,
-            self.backbone.bn1,
-            self.backbone.relu,
-            self.backbone.maxpool,
-        )
+        self.bn1 = self.backbone.bn1
+        self.relu = self.backbone.relu
+        self.maxpool = self.backbone.maxpool
         self.layer1 = self.backbone.layer1
         self.layer2 = self.backbone.layer2
+
+        # Set dilation for layer3 and layer4
+
+        for module in self.backbone.layer3.modules():
+            if isinstance(module, nn.Conv2d):
+                module.dilation = (2, 2)
+                # Paddig set to 2 because:
+                # padding = dilation * (kernel_size - 1) // 2
+                module.padding = (2, 2)
+                module.stride = (1, 1)
+
+        # Set to 1 the stride of the first BasicBlock in layer3 to prevent downsampling
+        # We want to prevent downsampling because originally the model was shrinking the
+        # feature maps but since with set dilation to 2 and the stride to 1, we no longer
+        # need the downsampling for the residual connection to work.
+        self.backbone.layer3[0].downsample[0].stride = (1, 1)
         self.layer3 = self.backbone.layer3
-        self.layer4 = self.backbone.layer4  # bottleneck features
 
-        self.decoder1 = DecoderBlock(512, 256, 256)
-        self.decoder2 = DecoderBlock(256, 128, 128)
-        self.decoder3 = DecoderBlock(128, 64, 64)
-        self.decoder4 = DecoderBlock(64, 64, 64)
+        for module in self.backbone.layer4.modules():
+            if isinstance(module, nn.Conv2d):
+                module.dilation = (4, 4)
+                module.padding = (4, 4)
+                module.stride = (1, 1)
 
-        self.mask_head = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
-        self.vfield_head = nn.Conv2d(64, 16, kernel_size=1, stride=1, padding=0)
+        # Same has layer3
+        self.backbone.layer4[0].downsample[0].stride = (1, 1)
+        self.layer4 = self.backbone.layer4
+
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=1, dilation=4),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+        )
+
+        self.decoder1 = DecoderBlock(256, skip_channels=128, out_channels=128)
+        self.decoder2 = DecoderBlock(128, skip_channels=64, out_channels=64)
+        self.decoder3 = DecoderBlock(64, skip_channels=64, out_channels=32)
+        self.head = nn.Sequential(
+            nn.Conv2d(3 + 32, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                32,
+                self.mask_channels + self.vfield_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            ),
+        )
 
     def forward(self, x):
-        x0 = self.conv1(x)  # 1/2 resolution
-        x1 = self.layer1(x0)  # 1/4 resolution
-        x2 = self.layer2(x1)  # 1/8 resolution
-        x3 = self.layer3(x2)  # 1/16 resolution
+        x0 = self.relu(self.bn1(self.conv1(x)))  # (64, H/2, W/2), skip for decoder3
+        x0_pool = self.maxpool(x0)  # (64, H/4, W/4)
 
-        # Bottleneck features
-        x4 = self.layer4(x3)  # 1/32 resolution
+        # Encoder (ResNet blocks)
+        x1 = self.layer1(x0_pool)  # (64,  H/4, W/4), skip for decoder2
+        x2 = self.layer2(x1)  # (128, H/8, W/8), skip for decoder1
+        x3 = self.layer3(x2)  # (256, H/8, W/8)
+        x4 = self.layer4(x3)  # (512, H/8, W/8)
 
-        # Skip connections from encoder layer3 works here
-        # because we upsample the bottleneck features
-        x5 = self.decoder1(x=x4, skip=x3)
-        x6 = self.decoder2(x=x5, skip=x2)
-        x7 = self.decoder3(x=x6, skip=x1)
-        x8 = self.decoder4(x=x7, skip=x0)
+        x5 = self.bottleneck(x4)  # (256, H/8, W/8)
 
-        return self.mask_head(x8), self.vfield_head(x8)
+        # Decoder with skip connections
+        d1 = self.decoder1(x=x5, skip=x3)  # (128, H/8, W/8)
+        d2 = self.decoder2(x=d1, skip=x2)  # (64, H/8, W/8)
+        d3 = self.decoder3(x=d2, skip=x1)  # (32, H/4, W/4)
+        d4 = self.head(x=d3, skip=x0)  # (18,  H/2, W/2)
+
+        mask = d4[:, : self.mask_channels, :, :]
+        vfield = d4[:, self.mask_channels :, :, :]
+
+        return mask, vfield
 
 
-transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
-print(transforms)
+# transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
+# print(transforms)
 
-dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
-dataset = BOPDataset(dataset_path=dataset_path)
+# dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
+# dataset = BOPDataset(dataset_path=dataset_path)
 
-cam_params, image, mask, keypoints, vector_field = dataset[0]
+# cam_params, image, mask, keypoints, vector_field = dataset[0]
 
-print(f"image shape: {image.size} ")
-tensor_image = transforms(image).unsqueeze(0)
-print(f"tensor image shape: {tensor_image.shape} ")
+# print(f"image shape: {image.size} ")
+# tensor_image = transforms(image).unsqueeze(0)
+# print(f"tensor image shape: {tensor_image.shape} ")
 
 pvnet = PVNet()
-torchinfo.summary(pvnet, input_size=(1, 3, 224, 224)) 
+torchinfo.summary(pvnet, input_size=(1, 3, 224, 224))
 # pvnet.eval()
 
 # pvnet(tensor_image)
