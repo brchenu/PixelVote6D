@@ -40,6 +40,9 @@ BASE_DIR = Path(__file__).resolve().parent
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels: int, skip_channels: int, out_channels: int):
         super().__init__()
+
+        self.cin = in_channels
+        self.cskip = skip_channels
         self.layers = nn.Sequential(
             nn.Conv2d(
                 in_channels + skip_channels,
@@ -54,7 +57,10 @@ class DecoderBlock(nn.Module):
         self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
     def forward(self, x, skip):
+        print(f"DecoderBlock input x shape: {x.shape}, skip shape: {skip.shape}")
         x = torch.cat([x, skip], dim=1)
+        print(f"After concatenation: {x.shape}")
+        print(f"expected in_channels: {self.cin}, expected skip_channels: {self.cskip}")
         x = self.layers(x)
         out = self.upsample(x)
         return out
@@ -117,7 +123,7 @@ class PVNet(nn.Module):
         self.layer4 = self.backbone.layer4
 
         self.bottleneck = nn.Sequential(
-            nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=1, dilation=4),
+            nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         )
@@ -152,9 +158,9 @@ class PVNet(nn.Module):
         x5 = self.bottleneck(x4)  # (256, H/8, W/8)
 
         # Decoder with skip connections
-        d1 = self.decoder1(x=x5, skip=x3)  # (128, H/4, W/4)
-        d2 = self.decoder2(x=d1, skip=x2)  # (64, H/2, W/2)
-        d3 = self.decoder3(x=d2, skip=x1)  # (32, H, W)
+        d1 = self.decoder1(x=x5, skip=x2)  # (128, H/4, W/4)
+        d2 = self.decoder2(x=d1, skip=x1)  # (64, H/2, W/2)
+        d3 = self.decoder3(x=d2, skip=x0)  # (32, H, W)
 
         d4 = torch.cat([d3, x], dim=1)
         out = self.head(d4)  # (18, H, W)
