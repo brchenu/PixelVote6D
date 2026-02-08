@@ -54,9 +54,9 @@ class DecoderBlock(nn.Module):
         self.upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
     def forward(self, x, skip):
-        x = self.upsample(x)
         x = torch.cat([x, skip], dim=1)
-        out = self.layers(x)
+        x = self.layers(x)
+        out = self.upsample(x)
         return out
 
 
