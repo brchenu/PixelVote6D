@@ -1,40 +1,6 @@
-import os
 import torch
 from torch import nn
-from PIL import Image
 import torchvision.models as models
-from pathlib import Path
-from dataset import BOPDataset
-import torchinfo
-
-BASE_DIR = Path(__file__).resolve().parent
-
-# random_data_path = os.path.join(BASE_DIR, "dataset", "custom", "random")
-
-# resnet18 = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1, progress=True)
-# torchinfo.summary(resnet18, input_size=(1, 3, 224, 224))
-
-# print(resnet18)
-
-# img = visualtorch.layered_view(resnet18, input_shape=(1, 3, 224, 224), legend=True, draw_volume=False)
-# print(type(img))
-
-# img.save(os.path.join(BASE_DIR, "resnet18_architecture_flat.png"))
-
-# torch.save(resnet18.state_dict(), os.path.join(BASE_DIR, "resnet18_weights.pth"))
-# transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
-
-# teapot = Image.open(os.path.join(random_data_path, "teapot.webp"))
-
-# tensor_teapot = transforms(teapot).unsqueeze(0)
-
-# resnet18.eval()
-
-# output = resnet18(tensor_teapot)
-
-# print(type(output))
-# print(output.shape)
-# print(f"max idx: {torch.argmax(output, dim=1)}")
 
 
 class DecoderBlock(nn.Module):
@@ -156,25 +122,3 @@ class PVNet(nn.Module):
         vfield = out[:, self.mask_channels :, :, :]
 
         return mask, vfield
-
-
-transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
-print(transforms)
-
-dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
-dataset = BOPDataset(dataset_path=dataset_path)
-
-cam_params, image, mask, keypoints, vector_field = dataset[0]
-
-print(f"image shape: {image.size} ")
-tensor_image = transforms(image).unsqueeze(0)
-print(f"tensor image shape: {tensor_image.shape} ")
-
-pvnet = PVNet()
-# torchinfo.summary(pvnet, input_size=(1, 3, 224, 224))
-pvnet.eval()
-
-out = pvnet(tensor_image)
-
-print(f"mask shape: {out[0].shape}")
-print(f"vfield shape: {out[1].shape}")
