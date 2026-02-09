@@ -70,7 +70,7 @@ if __name__ == "__main__":
             np.save(os.path.join(curr_dir, "vector_field.npy"), vector_field)
             np.save(os.path.join(curr_dir, "image.npy"), img)
             np.save(os.path.join(curr_dir, "mask.npy"), mask)
-            np.save(os.path.join(curr_dir, "keypoints.npy"), project_keypoints)
+            np.save(os.path.join(curr_dir, "2d_keypoints.npy"), project_keypoints)
             np.savez(
                 os.path.join(curr_dir, "camera_params.npz"),
                 K=K, R=R, t=t
