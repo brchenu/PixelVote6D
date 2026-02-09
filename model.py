@@ -79,8 +79,6 @@ class PVNet(nn.Module):
 
         # Set dilation for layer3 and layer4
 
-        print(self.backbone.layer3)
-
         for module in self.backbone.layer3.modules():
             if isinstance(module, nn.Conv2d):
                 if module.kernel_size == (1, 1):
@@ -160,20 +158,23 @@ class PVNet(nn.Module):
         return mask, vfield
 
 
-# transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
-# print(transforms)
+transforms = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
+print(transforms)
 
-# dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
-# dataset = BOPDataset(dataset_path=dataset_path)
+dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
+dataset = BOPDataset(dataset_path=dataset_path)
 
-# cam_params, image, mask, keypoints, vector_field = dataset[0]
+cam_params, image, mask, keypoints, vector_field = dataset[0]
 
-# print(f"image shape: {image.size} ")
-# tensor_image = transforms(image).unsqueeze(0)
-# print(f"tensor image shape: {tensor_image.shape} ")
+print(f"image shape: {image.size} ")
+tensor_image = transforms(image).unsqueeze(0)
+print(f"tensor image shape: {tensor_image.shape} ")
 
 pvnet = PVNet()
-torchinfo.summary(pvnet, input_size=(1, 3, 224, 224))
-# pvnet.eval()
+# torchinfo.summary(pvnet, input_size=(1, 3, 224, 224))
+pvnet.eval()
 
-# pvnet(tensor_image)
+out = pvnet(tensor_image)
+
+print(f"mask shape: {out[0].shape}")
+print(f"vfield shape: {out[1].shape}")
