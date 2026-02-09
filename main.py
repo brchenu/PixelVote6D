@@ -5,6 +5,10 @@ from model import PVNet
 from dataset import BOPDataset
 from pathlib import Path
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print(f"Using device: {device}")
+
 BASE_DIR = Path(__file__).resolve().parent
 
 transforms = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
@@ -12,12 +16,15 @@ transforms = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
 dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
 dataset = BOPDataset(dataset_path=dataset_path)
 
-datasetloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
+datasetloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=8, shuffle=True)
 
 bce_loss = torch.nn.BCEWithLogitsLoss()
 smooth_l1_loss = torch.nn.SmoothL1Loss()
 
 pvnet = PVNet()
+
+# Move model to GPU
+pvnet = pvnet.to(device)
 
 optimizer = torch.optim.Adam(pvnet.parameters(), lr=1e-3)
 
@@ -27,6 +34,11 @@ for epoch in range(EPOCHS):
     mask_total_loss = 0.0
     vfield_total_loss = 0.0
     for image, mask, vfield in datasetloader:
+
+        image = image.to(device)
+        mask = mask.to(device)
+        vfield = vfield.to(device)
+
         pred_mask, pred_vfield = pvnet(image)
 
         mask_loss = bce_loss(pred_mask, mask)
