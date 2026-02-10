@@ -1,6 +1,8 @@
 import os
+import cv2
 import torch
 import torchvision
+import numpy as np
 from model import PVNet
 from dataset import BOPDataset
 from pathlib import Path
@@ -13,10 +15,12 @@ BASE_DIR = Path(__file__).resolve().parent
 
 transforms = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
 
-dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "scene_000010")
+dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "ycbv", "scene_000010")
 dataset = BOPDataset(dataset_path=dataset_path)
 
-datasetloader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=8, shuffle=True)
+datasetloader = torch.utils.data.DataLoader(
+    dataset, batch_size=32, num_workers=8, shuffle=True
+)
 
 bce_loss = torch.nn.BCEWithLogitsLoss()
 smooth_l1_loss = torch.nn.SmoothL1Loss()
@@ -28,7 +32,7 @@ pvnet = pvnet.to(device)
 
 optimizer = torch.optim.Adam(pvnet.parameters(), lr=1e-3)
 
-EPOCHS = 3
+EPOCHS = 10
 
 for epoch in range(EPOCHS):
     mask_total_loss = 0.0
@@ -54,11 +58,41 @@ for epoch in range(EPOCHS):
         total_loss.backward()
         optimizer.step()
 
-    print(f"Average Mask Loss: {mask_total_loss / len(datasetloader):.4f} | Average VField Loss: {vfield_total_loss / len(datasetloader):.4f}")
+    print(
+        f"Average Mask Loss: {mask_total_loss / len(datasetloader):.4f} | Average VField Loss: {vfield_total_loss / len(datasetloader):.4f}"
+    )
 
-# test_dataset_path = os.path.join(BASE_DIR, "dataset", "clean", "test", "scene_000011")
-# test_datasetloader = torch.utils.data.DataLoader(BOPDataset(dataset_path=test_dataset_path), batch_size=1, shuffle=False)
+test_dataset_path = os.path.join(
+    BASE_DIR, "dataset", "clean", "ycbv", "test", "scene_000000"
+)
+test_datasetloader = torch.utils.data.DataLoader(
+    BOPDataset(dataset_path=test_dataset_path), batch_size=1, shuffle=False
+)
 
-# with torch.no_grad():
-#     for image, mask, vfield in test_datasetloader:
-#         pred_mask, pred_vfield = pvnet(image)
+with torch.no_grad():
+    for image, mask, vfield in test_datasetloader:
+        image = image.to(device)
+        pred_mask, pred_vfield = pvnet(image)
+
+        # image: (1,3,H,W) in range [0,1] from torchvision transforms
+        img = image[0].cpu().numpy().transpose(1, 2, 0)
+        img = (img * 255).clip(0, 255).astype(np.uint8)
+        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+        prob_map = torch.sigmoid(pred_mask[0])
+        binary_mask = (prob_map > 0.5).float()
+
+        mask_np = binary_mask.squeeze().cpu().numpy().astype(np.uint8)  # 0/1
+        mask_3c = np.repeat(mask_np[:, :, None], 3, axis=2)
+
+        masked_img = img_bgr * mask_3c  # zero out background
+
+        # after masked_img is created
+        orig_w, orig_h = 640, 480
+        resized = cv2.resize(
+            masked_img, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST
+        )
+        cv2.imshow("Masked Image", resized)
+        cv2.waitKey(0)
+
+cv2.destroyAllWindows()
