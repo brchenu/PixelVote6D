@@ -52,7 +52,7 @@ def load_data(dataset_dir: str, scene: str, obj_id: int):
     with open(pose_file, "rb") as f:
         poses = orjson.loads(f.read())
 
-    masks = find_masks_for_object(dataset_dir, scene, obj_id)
+    masks_files = find_masks_for_object(dataset_dir, scene, obj_id)
 
     rgb_dir = os.path.join(train_dir, "rgb")
     img_files = sorted(os.listdir(rgb_dir))
@@ -76,7 +76,7 @@ def load_data(dataset_dir: str, scene: str, obj_id: int):
             print(f"Warning: Object {obj_id} not found in frame {idx}")
             continue
 
-        mask_filename = masks.get(str(idx))
+        mask_filename = masks_files.get(str(idx))
         mask_path = os.path.join(train_dir, "mask", mask_filename)
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
