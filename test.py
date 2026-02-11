@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 from model import PVNet
 from pathlib import Path
-from data_transfrom import PVNetTransform
-from bop_dataset import BOPDirectDataset
+from bop_toolkit.data_transfrom import PVNetTransform
+from bop_toolkit.bop_dataset import BOPDirectDataset
 from bop_toolkit.vizualization import show_vector_field
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

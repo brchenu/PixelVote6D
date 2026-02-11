@@ -1,10 +1,10 @@
 import os
 import torch
 import torchvision
-from bop_dataset import BOPDirectDataset
+from bop_toolkit.bop_dataset import BOPDirectDataset
 from model import PVNet
 from pathlib import Path
-from data_transfrom import PVNetTransform
+from bop_toolkit.data_transfrom import PVNetTransform
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

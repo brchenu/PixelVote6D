@@ -7,7 +7,7 @@ import orjson
 import torch
 from torch.utils.data import Dataset
 
-from data_transfrom import PVNetTransform
+from .data_transfrom import PVNetTransform
 from utils.algebra import project_points
 from utils.vector_field import generate_vector_field
 
