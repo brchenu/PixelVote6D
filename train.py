@@ -14,11 +14,14 @@ BASE_DIR = Path(__file__).resolve().parent
 
 transforms = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
 
-dataset_path = os.path.join(BASE_DIR, "dataset", "ycbv")
+OBJ_ID = 1
+DATASET_NAME = "ycbv"
+
+dataset_path = os.path.join(BASE_DIR, "dataset", DATASET_NAME)
 
 # dataset = BOPDataset(dataset_path=dataset_path)
 dataset = BOPDirectDataset(
-    dataset_dir=dataset_path, obj_id=1, transform=PVNetTransform()
+    dataset_dir=dataset_path, obj_id=OBJ_ID, transform=PVNetTransform()
 )
 
 print(f"Dataset size: {len(dataset)} samples")
@@ -71,7 +74,7 @@ current_vfield_loss = vfield_total_loss / len(datasetloader)
 
 # ==== Save Checkpoint ====
 
-checkpoint_path = os.path.join(BASE_DIR, "pvnet_checkpoint.pth")
+checkpoint_path = os.path.join(BASE_DIR, "checkpoints", f"pvnet_checkpoint_obj{OBJ_ID}_{DATASET_NAME}.pth")
 checkpoints = {
     "epoch": epoch,
     "model_state_dict": pvnet.state_dict(),
