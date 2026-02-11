@@ -8,8 +8,9 @@ def show_vector_field(
     vector_field: np.ndarray,
     keypoints: np.ndarray,
     step: int = 20,
-    scale_mode: str = "normalized", 
-    mask_img: bool = True
+    scale_mode: str = "normalized",
+    mask_img: bool = True,
+    resize_factor: int = None,
 ):
     """
     Visualize the vector field on the image with keypoints.
@@ -25,7 +26,7 @@ def show_vector_field(
     """
     ARROW_TIP_LENGTH = 0.03
     img_masked_base = cv2.bitwise_and(img, img, mask=mask.astype(np.uint8) * 255)
-    
+
     for i, point in enumerate(keypoints):
         # Create a fresh copy for each keypoint to avoid accumulation
         if mask_img:
@@ -41,7 +42,7 @@ def show_vector_field(
             for col in range(0, img.shape[1], step):
                 if mask[row, col] <= 0:
                     continue
-                
+
                 if scale_mode == "full":
                     # Show full displacement from pixel to keypoint
                     vx = x - col
@@ -50,7 +51,7 @@ def show_vector_field(
                     # Show normalized direction
                     vx = vector_field[row, col, i * 2]
                     vy = vector_field[row, col, i * 2 + 1]
-                
+
                 cv2.arrowedLine(
                     displayed_img,
                     (col, row),
@@ -60,11 +61,19 @@ def show_vector_field(
                     tipLength=ARROW_TIP_LENGTH,
                 )
 
+        # Resize image (enlarge) for better visualization
+        if resize_factor is not None:
+            displayed_img = cv2.resize(
+                displayed_img,
+                (displayed_img.shape[1] * resize_factor, displayed_img.shape[0] * resize_factor),
+                interpolation=cv2.INTER_NEAREST,
+            )
+
         cv2.imshow(f"Vector Field - Keypoint {i+1}/{len(keypoints)}", displayed_img)
         key = cv2.waitKey(0)
         if key == 27:  # ESC key to exit
             break
-    
+
     cv2.destroyAllWindows()
 
 
