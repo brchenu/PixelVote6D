@@ -8,6 +8,9 @@ from PIL import Image
 
 class PVNetTransform:
     """PVNet dataset transform using torchvision v1 transforms."""
+    
+    MEAN = (0.485, 0.456, 0.406)
+    STD = (0.229, 0.224, 0.225)
 
     def __init__(self, resize: int = 256, crop_size: int = 224):
         self.resize = resize
@@ -18,7 +21,7 @@ class PVNetTransform:
                 T.Resize(resize, interpolation=T.InterpolationMode.BILINEAR),
                 T.CenterCrop((crop_size, crop_size)),
                 T.ToTensor(),  # Converts PIL to float32 [0, 1]
-                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                T.Normalize(mean=PVNetTransform.MEAN, std=PVNetTransform.STD),
             ]
         )
 
@@ -29,6 +32,20 @@ class PVNetTransform:
                 T.ToTensor(),  # Converts PIL to float32 [0, 1]
             ]
         )
+
+    @staticmethod
+    def unnormalize_image(tensor: torch.Tensor) -> torch.Tensor:
+        """Unnormalize an image tensor for visualization.
+
+        Args:
+            tensor: (3, H, W) normalized image tensor
+        """
+        mean = torch.tensor(PVNetTransform.MEAN).reshape(3, 1, 1)
+        std = torch.tensor(PVNetTransform.STD).reshape(3, 1, 1)
+        image = (tensor * std) + mean
+        image = image.clamp(0.0, 1.0)
+        image = (image * 255.0).to(torch.uint8)
+        return image
 
     def _transform_keypoints(
         self, keypoints: np.ndarray, orig_h: int, orig_w: int
