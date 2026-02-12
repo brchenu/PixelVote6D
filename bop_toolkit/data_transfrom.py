@@ -40,8 +40,11 @@ class PVNetTransform:
         Args:
             tensor: (3, H, W) normalized image tensor
         """
-        mean = torch.tensor(PVNetTransform.MEAN).reshape(3, 1, 1)
-        std = torch.tensor(PVNetTransform.STD).reshape(3, 1, 1)
+        device = tensor.device
+
+        mean = torch.tensor(PVNetTransform.MEAN).reshape(3, 1, 1).to(device)
+        std = torch.tensor(PVNetTransform.STD).reshape(3, 1, 1).to(device)
+
         image = (tensor * std) + mean
         image = image.clamp(0.0, 1.0)
         image = (image * 255.0).to(torch.uint8)
