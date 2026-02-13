@@ -18,7 +18,7 @@ def generate_vector_field(
     norm = np.sqrt(np.sum(vector_field**2, axis=-1, keepdims=True))
     vector_field = vector_field / (norm + 1e-8)
 
-    # (K, H, W, 2) -transpose-> (K, 2, H, W) -reshape-> (K*2, H, W)
+    # (K, H, W, 2) -transpose-> (2, K, H, W) -reshape-> (K*2, H, W)
     vector_field = vector_field.transpose(3, 0, 1, 2).reshape(-1, height, width)
 
     # Apply mask (convert to boolean once)
