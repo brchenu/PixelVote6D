@@ -12,17 +12,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# checkpoint = "checkpoints/pvnet_checkpoint_obj1_ycbv_2026-02-13_21-03-59.pth" 
+obj_id = 10
+dataset_name = "lm"
+checkpoint = "checkpoints/pvnet_checkpoint_obj10_lm_2026-02-13_22-28-15.pth" 
+
 pvnet = PVNet()
 pvnet.load_state_dict(
-    torch.load("checkpoints/pvnet_checkpoint.pth", weights_only=True)[
+    torch.load(checkpoint, weights_only=True)[
         "model_state_dict"
     ]
 )
 
-dataset_path = os.path.join(BASE_DIR, "dataset", "ycbv")
+dataset_path = os.path.join(BASE_DIR, "dataset", dataset_name)
 
 dataset = BOPDirectDataset(
-    dataset_dir=dataset_path, obj_id=1, testing_mode=True, transform=PVNetTransform()
+    dataset_dir=dataset_path, obj_id=obj_id, testing_mode=True, transform=PVNetTransform()
 )
 
 datasetloader = torch.utils.data.DataLoader(
@@ -37,12 +42,12 @@ for image, mask, vfield, keypoints_2d in datasetloader:
     image = image.to(device)
     pred_mask, pred_vfield = pvnet(image)
 
-    show_vfield(image, mask, pred_vfield, keypoints_2d)
+    show_vfield(image, mask, vfield, keypoints_2d)
 
     break
 
-#     print(f"image device: {image.device}")
 #     img = PVNetTransform.unnormalize_image(image.squeeze())
+#     print(f"image device: {image.device}")
 #     img = img.permute(1, 2, 0).cpu().numpy()
 #     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
