@@ -4,6 +4,10 @@ import numpy as np
 def generate_vector_field(
     height: int, width: int, mask: np.ndarray, keypoints: np.ndarray
 ) -> np.ndarray:
+
+    assert keypoints.ndim == 2 and keypoints.shape[1] == 2, "Keypoints should be (K, 2) array of (x, y) coordinates"
+    assert mask.shape == (height, width), "Mask shape should match height and width"
+
     x, y = np.meshgrid(np.arange(width), np.arange(height), indexing="xy")
     coords = np.stack((x, y), axis=-1)  # (H, W, 2)
 
