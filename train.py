@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import torchvision
 from bop_toolkit.bop_dataset import BOPDirectDataset
@@ -53,9 +54,12 @@ for epoch in range(EPOCHS):
         pred_mask, pred_vfield = pvnet(image)
 
         mask_loss = bce_loss(pred_mask, mask)
+
+        # Apply mask to vfield, to only penalize predictions inside the object
+        mask_binary = (mask > 0.5).float()  # (B, 1, H, W)
         vfield_loss = (
-            smooth_l1_loss(pred_vfield, vfield) * 10
-        )  # Scale vfield loss to balance with mask loss
+            smooth_l1_loss(pred_vfield * mask_binary, vfield * mask_binary) * 10
+        )
 
         mask_total_loss += mask_loss.item()
         vfield_total_loss += vfield_loss.item()
@@ -74,7 +78,10 @@ current_vfield_loss = vfield_total_loss / len(datasetloader)
 
 # ==== Save Checkpoint ====
 
-checkpoint_path = os.path.join(BASE_DIR, "checkpoints", f"pvnet_checkpoint_obj{OBJ_ID}_{DATASET_NAME}.pth")
+current_date = time.strftime("%Y-%m-%d_%H-%M-%S")
+checkpoint_path = os.path.join(
+    BASE_DIR, "checkpoints", f"pvnet_checkpoint_obj{OBJ_ID}_{DATASET_NAME}_{current_date}.pth"
+)
 checkpoints = {
     "epoch": epoch,
     "model_state_dict": pvnet.state_dict(),
