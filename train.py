@@ -32,14 +32,14 @@ datasetloader = torch.utils.data.DataLoader(
 )
 
 bce_loss = torch.nn.BCEWithLogitsLoss()
-smooth_l1_loss = torch.nn.SmoothL1Loss()
+smooth_l1_loss = torch.nn.SmoothL1Loss(reduction="none")  # We'll apply mask manually, so no reduction here
 
 pvnet = PVNet()
 pvnet = pvnet.to(device)  # Move model to GPU if available
 
 optimizer = torch.optim.Adam(pvnet.parameters(), lr=1e-3)
 
-EPOCHS = 5
+EPOCHS = 3
 
 for epoch in range(EPOCHS):
     mask_total_loss = 0.0
@@ -55,11 +55,17 @@ for epoch in range(EPOCHS):
 
         mask_loss = bce_loss(pred_mask, mask)
 
-        # Apply mask to vfield, to only penalize predictions inside the object
-        mask_binary = (mask > 0.5).float()  # (B, 1, H, W)
-        vfield_loss = (
-            smooth_l1_loss(pred_vfield * mask_binary, vfield * mask_binary) * 10
-        )
+        loss_map = smooth_l1_loss(pred_vfield, vfield)   # [B, 2K, H, W]
+
+        mask_binary = (mask > 0.5).float()               # [B, 1, H, W]
+        valid_pixels = mask_binary.sum()
+
+        num_channels = loss_map.shape[1]
+        mask_binary = mask_binary.repeat(1, num_channels, 1, 1)
+
+        vfield_loss = (loss_map * mask_binary).sum()
+        vfield_loss = vfield_loss / (valid_pixels + 1e-6)
+        vfield_loss = vfield_loss / num_channels
 
         mask_total_loss += mask_loss.item()
         vfield_total_loss += vfield_loss.item()
