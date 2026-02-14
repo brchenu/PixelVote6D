@@ -74,7 +74,7 @@ class PVNetRansac:
         # Vectorized intersect line
 
         A = torch.stack([v1, -v2], dim=-1)  # B, 2, 2
-        b = (p2 - p1).unsqueeze(0).expand(self.batch_size, 1).float()  # B, 2
+        b = (p2 - p1).unsqueeze(0).repeat(self.batch_size, 1).float()  # B, 2
 
         assert A.dim() == 3 and A.size(1) == 2 and A.size(2) == 2
         assert b.dim() == 2 and b.size(1) == 2
