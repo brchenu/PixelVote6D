@@ -1,5 +1,6 @@
 import torch
 
+
 class PVNetRansac:
     def __init__(self, mask: torch.Tensor, vfield: torch.Tensor, num_iter: int):
         # vfield shape is (B*2, H, W)
@@ -20,7 +21,7 @@ class PVNetRansac:
 
         assert self.vfield.dim() == 4 and self.vfield.size(1) == 2  # B, 2, H, W
 
-        idx = torch.randperm(self.valid_index.size(0))[:2]  # 2
+        idx = torch.randperm(self.valid_index.size(0))[:2]
         p1 = self.valid_index[idx[0]]
         p2 = self.valid_index[idx[1]]
 
@@ -40,63 +41,57 @@ class PVNetRansac:
         # Vectorized intersect line
 
         A = torch.stack([v1, -v2], dim=-1)  # B, 2, 2
-        print(f"shape A: {A.shape}")
         b = (p2 - p1).unsqueeze(0).repeat(self.batch_size, 1).float()  # B, 2
-        print(f"shape b: {b.shape}")
 
         assert A.dim() == 3 and A.size(1) == 2 and A.size(2) == 2
         assert b.dim() == 2 and b.size(1) == 2
 
         t = torch.linalg.solve(A, b)
-        print(f"shape t: {t.shape}")
 
         assert t.size(0) == self.batch_size
 
         return p1 + t[:, 0:1] * v1
 
-    def score(self, hypothesis: torch.Tensor):
-        assert hypothesis.dim() == 2
-        assert hypothesis.size(1) == 2  # B, 2
+    def scores(self, hypothesis: torch.Tensor):
 
-        h, w = self.vfield.size()[2:]
-        x, y = torch.meshgrid(torch.arange(w), torch.arange(h), indexing="xy")
-        coords = torch.stack([x, y], dim=0).float()  # 2, H, W
+        # vfield (B, 2, H, W)
+        # valid_index (N, 2)
 
-        hypothesis = hypothesis[:, :, None, None]  # B, 2, 1, 1
-        coords = coords[None, :, :, :].repeat(hypothesis.size(0), 1, 1, 1)  # B, 2, H, W
+        assert hypothesis.size(0) == self.batch_size and hypothesis.size(1) == 2
 
-        hypo_vec = hypothesis - coords  # B, 2, H, W
-        hypo_vec = hypo_vec / torch.norm(hypo_vec, dim=1, keepdim=True)  # B, 2, H, W
+        # mask_vecs (B, 2, N)
+        mask_vecs = self.vfield[:, :, self.valid_index[:, 0], self.valid_index[:, 1]]
+        # flip valid index to x, y, transpose to 2, N
+        mask_coords = self.valid_index.flip(1).float().T
 
-        # hypo_vec = hypo_vec.reshape(hypo_vec.size(0), 2, -1)
-        data_vec = self.vfield.reshape(self.batch_size, 2, -1)
+        dir_to_hipo = hypothesis[:, :, None] - mask_coords[None, :, :]  # (B, 2, N)
+        dir_to_hipo = torch.nn.functional.normalize(dir_to_hipo, dim=1)  # (B, 2, N)
 
-        assert hypo_vec.dim() == 3 and hypo_vec.size(1) == 2
-        assert data_vec.dim() == 3 and data_vec.size(1) == 2
+        dot_products = (dir_to_hipo * mask_vecs).sum(dim=1)  # (B, N)
+        scores = (dot_products > 0.9).sum(dim=1)  # (B,)
 
-        scores = torch.sum(hypo_vec * data_vec, dim=1)  # B, H*W
-        # scores = hypo_vec @ data_vec  # B, H*W
-
-        THRESHOLD = 0.9
-        inliers = scores > THRESHOLD
-
-        consensus = inliers.sum(dim=1)  # B
-
-        return consensus, hypothesis.squeeze()  # B, 2
+        return scores, hypothesis
 
     def ransac(self):
 
-        all_hyopt = []
-        all_consensus = []
+        all_hypo = []
+        all_scores = []
         for _ in range(self.num_iter):
             hypo_points = self.batched_hypothesis()
-            consensus, hypo_points = self.score(hypo_points)
-            all_hyopt.append(hypo_points)
-            all_consensus.append(consensus)
+            scores, hypo_points = self.scores(hypo_points)
+            all_hypo.append(hypo_points)
+            all_scores.append(scores)
 
-        all_hyopt = torch.stack(all_hyopt, dim=0)  # I, B, 2
-        all_consensus = torch.stack(all_consensus, dim=0)  # I, B
+        all_hypo = torch.stack(all_hypo, dim=0)  # (I, B, 2)
+        all_scores = torch.stack(all_scores, dim=0)  # (I, B)
 
-        # get max of each batch for iter
-        best_consensus, best_idx = all_consensus.max(dim=0)  # B
-        best_hypo_points = all_hyopt[best_idx, :, :]  # B, 2
+        # best_scores, best_idx = all_scores.max(dim=0) 
+        # final_keypoints = all_hypo[best_idx, torch.arange(self.batch_size)]
+
+        # Convert scores to weights and use them to compute 
+        # a weighted average of the hypotheses to get the final keypoints
+        weights = torch.softmax(all_scores.float(), dim=0) # (Iter, B)
+        final_keypoints = (all_hypo * weights.unsqueeze(2)).sum(dim=0) # (B, 2)
+
+        return final_keypoints
+
