@@ -157,11 +157,14 @@ class BOPDirectDataset(Dataset):
         # Resolve the data directory for this split
         dataset_name = os.path.basename(os.path.normpath(dataset_dir))
 
-        self.subset = (
-            f"{dataset_name}_{subset.value}" if subset == BOPSubSet.TEST else subset.value
+        self.subset = subset
+        subset_dir = (
+            f"{dataset_name}_{subset.value}"
+            if subset == BOPSubSet.TEST
+            else subset.value
         )
 
-        self.data_dir = os.path.join(dataset_dir, self.subset)
+        self.data_dir = os.path.join(dataset_dir, subset_dir)
 
         if not os.path.isdir(self.data_dir):
             raise FileNotFoundError(f"Data directory not found: {self.data_dir}")
