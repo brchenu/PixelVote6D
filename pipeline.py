@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from model import PVNet
 from pathlib import Path
-from bop_toolkit.bop_dataset import BOPDirectDataset
+from bop_toolkit.bop_dataset import BOPDirectDataset, BOPSubSet
 from bop_toolkit.data_transfrom import PVNetTransform
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,7 +22,10 @@ BASE_DIR = Path(__file__).resolve().parent
 dataset_path = os.path.join(BASE_DIR, "dataset", "ycbv")
 
 dataset = BOPDirectDataset(
-    dataset_dir=dataset_path, obj_id=1, transform=PVNetTransform()
+    dataset_dir=dataset_path,
+    obj_id=1,
+    transform=PVNetTransform(),
+    subset=BOPSubSet.REAL,
 )
 
 image, mask, vfield, keypoints_2d = dataset[0]

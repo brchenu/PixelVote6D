@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+from enum import Enum
 
 import cv2
 import numpy as np
@@ -118,6 +119,12 @@ class BOPSceneIndex:
         return self.samples[idx]
 
 
+class BOPSubSet(Enum):
+    TRAIN = "train_pbr"
+    TEST = "_test_all/test"
+    REAL = "train_real"
+
+
 class BOPDirectDataset(Dataset):
     """PyTorch Dataset that reads directly from the BOP file structure.
 
@@ -127,7 +134,7 @@ class BOPDirectDataset(Dataset):
     Args:
         dataset_dir: root directory of the BOP dataset (e.g., "dataset/ycbv").
         obj_id: BOP object ID to load (e.g., 10 for egg_box).
-        testing: bool = False, if True loads data from test folder
+        subset: SubSet = SubSet.TRAIN, specifies which subset to load.
         transform: Optional[PVNetTransform] = None,
     """
 
@@ -136,17 +143,25 @@ class BOPDirectDataset(Dataset):
         dataset_dir: str,
         obj_id: int,
         transform: Optional[PVNetTransform] = None,
-        testing_mode: bool = False,
+        subset: BOPSubSet = BOPSubSet.TRAIN,
     ):
         self.dataset_dir = dataset_dir
         self.obj_id = obj_id
         self.transform = transform or PVNetTransform()
-        self.testing_mode = testing_mode
+
+        if not isinstance(subset, BOPSubSet):
+            raise ValueError(
+                f"Invalid subset: {subset}. Must be one of {list(BOPSubSet)}."
+            )
 
         # Resolve the data directory for this split
         dataset_name = os.path.basename(os.path.normpath(dataset_dir))
-        sub = f"{dataset_name}_test_all/test" if testing_mode else "train_pbr"
-        self.data_dir = os.path.join(dataset_dir, sub)
+
+        self.subset = (
+            f"{dataset_name}_{subset.value}" if subset == BOPSubSet.TEST else subset.value
+        )
+
+        self.data_dir = os.path.join(dataset_dir, self.subset)
 
         if not os.path.isdir(self.data_dir):
             raise FileNotFoundError(f"Data directory not found: {self.data_dir}")
@@ -197,8 +212,9 @@ class BOPDirectDataset(Dataset):
 
         scene_dir = os.path.join(self.data_dir, scene)
 
-        # Load image
-        extension = "png" if self.testing_mode else "jpg"
+        # Be careful with PBR vs other subsets image extensions
+        extension = "jpg" if self.subset == BOPSubSet.TRAIN else "png"
+
         img_path = os.path.join(scene_dir, "rgb", f"{int(frame):06d}.{extension}")
         image = cv2.imread(img_path)
         if image is None:

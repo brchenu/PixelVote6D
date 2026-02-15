@@ -2,8 +2,7 @@ import os
 import time
 import logging
 import torch
-import torchvision
-from bop_toolkit.bop_dataset import BOPDirectDataset
+from bop_toolkit.bop_dataset import BOPDirectDataset, BOPSubSet
 from model import PVNet
 from pathlib import Path
 from bop_toolkit.data_transfrom import PVNetTransform
@@ -13,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 OBJ_ID = 15
 DATASET_NAME = "ycbv"
 
-EPOCHS = 10
+EPOCHS = 20
 
 current_date = time.strftime("%Y-%m-%d_%H-%M-%S")
 filename_suffix = f"{current_date}_epoch{EPOCHS - 1}_obj{OBJ_ID}_{DATASET_NAME}"
@@ -44,6 +43,7 @@ dataset = BOPDirectDataset(
     dataset_dir=os.path.join(BASE_DIR, "dataset", DATASET_NAME),
     obj_id=OBJ_ID,
     transform=PVNetTransform(),
+    subset=BOPSubSet.TRAIN,
 )
 
 datasetloader = torch.utils.data.DataLoader(
@@ -54,7 +54,14 @@ datasetloader = torch.utils.data.DataLoader(
 bce_loss = torch.nn.BCEWithLogitsLoss()
 smooth_l1_loss = torch.nn.SmoothL1Loss(reduction="none")
 
+checkpoint = "checkpoints/pvnet_2026-02-14_20-19-55_epoch19_obj15_ycbv.pth" 
+
 pvnet = PVNet()
+# pvnet.load_state_dict(
+#     torch.load(checkpoint, weights_only=True)[
+#         "model_state_dict"
+#     ]
+# )
 pvnet = pvnet.to(device)  # Try to move model to GPU
 
 optimizer = torch.optim.Adam(pvnet.parameters(), lr=1e-4)
