@@ -14,12 +14,12 @@ class PVNetRansac:
         self.num_iter = num_iter
         self.valid_index = mask.nonzero()  # N, 2
 
-        print(f"shape valid idx: {self.valid_index.shape}")
-
     def batched_hypothesis(self):
         """Batch hypothesis over B keypoits"""
 
         assert self.vfield.dim() == 4 and self.vfield.size(1) == 2  # B, 2, H, W
+        assert self.valid_index.dim() == 2 
+        assert self.valid_index.size(1) == 2  # N, 2
 
         idx = torch.randperm(self.valid_index.size(0))[:2]
         p1 = self.valid_index[idx[0]]
@@ -36,7 +36,8 @@ class PVNetRansac:
         p1 = p1.flip(0).float()
         p2 = p2.flip(0).float()
 
-        assert p1.dim() == 1 and p1.size(0) == 2
+        assert p1.dim() == 1
+        assert p1.size(0) == 2
 
         # Vectorized intersect line
 
