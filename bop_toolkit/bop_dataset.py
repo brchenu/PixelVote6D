@@ -179,16 +179,16 @@ class BOPDirectDataset(Dataset):
 
         self.keypoints_3d = np.loadtxt(keypoints_path)
 
-        self.index = BOPSceneIndex(self.data_dir, obj_id)
+        self.samples = BOPSceneIndex(self.data_dir, obj_id)
 
-        if len(self.index) == 0:
+        if len(self.samples) == 0:
             raise ValueError(
                 f"No samples found for object {obj_id} in {self.data_dir}. "
                 f"Check that the object exists in the scene_gt.json files."
             )
 
     def __len__(self) -> int:
-        return len(self.index)
+        return len(self.samples)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Return a single training sample.
@@ -202,7 +202,7 @@ class BOPDirectDataset(Dataset):
                 - mask: (1, H, W) float32 tensor.
                 - vector_field: (K*2, H, W) float32 tensor.
         """
-        sample = self.index[idx]
+        sample = self.samples[idx]
         scene = sample["scene"]
         frame = sample["frame"]
         mask_filename = sample["mask_filename"]
