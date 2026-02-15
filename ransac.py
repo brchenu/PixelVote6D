@@ -13,6 +13,8 @@ class PVNetRansac:
         self.num_iter = num_iter
         self.valid_index = mask.nonzero()  # N, 2
 
+        print(f"shape valid idx: {self.valid_index.shape}")
+
     def batched_hypothesis(self):
         """Batch hypothesis over B keypoits"""
 
@@ -38,16 +40,19 @@ class PVNetRansac:
         # Vectorized intersect line
 
         A = torch.stack([v1, -v2], dim=-1)  # B, 2, 2
+        print(f"shape A: {A.shape}")
         b = (p2 - p1).unsqueeze(0).repeat(self.batch_size, 1).float()  # B, 2
+        print(f"shape b: {b.shape}")
 
         assert A.dim() == 3 and A.size(1) == 2 and A.size(2) == 2
         assert b.dim() == 2 and b.size(1) == 2
 
         t = torch.linalg.solve(A, b)
+        print(f"shape t: {t.shape}")
 
         assert t.size(0) == self.batch_size
 
-        return p1 + t[:, 0] * v1
+        return p1 + t[:, 0:1] * v1
 
     def score(self, hypothesis: torch.Tensor):
         assert hypothesis.dim() == 2
