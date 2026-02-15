@@ -14,6 +14,11 @@ class PVNetRansac:
         self.num_iter = num_iter
         self.valid_index = mask.nonzero()  # N, 2
 
+        # Pre-compute used in self.scores
+        self.mask_vecs = self.vfield[:, :, self.valid_index[:, 0], self.valid_index[:, 1]]  # (B, 2, N)
+        # flip valid index to x, y, transpose to 2, N
+        self.mask_coords = self.valid_index.flip(1).float().T  # (2, N)
+
     def batched_hypothesis(self):
         """Batch hypothesis over B keypoits"""
 
@@ -60,15 +65,10 @@ class PVNetRansac:
 
         assert hypothesis.size(0) == self.batch_size and hypothesis.size(1) == 2
 
-        # mask_vecs (B, 2, N)
-        mask_vecs = self.vfield[:, :, self.valid_index[:, 0], self.valid_index[:, 1]]
-        # flip valid index to x, y, transpose to 2, N
-        mask_coords = self.valid_index.flip(1).float().T
-
-        dir_to_hipo = hypothesis[:, :, None] - mask_coords[None, :, :]  # (B, 2, N)
+        dir_to_hipo = hypothesis[:, :, None] - self.mask_coords[None, :, :]  # (B, 2, N)
         dir_to_hipo = torch.nn.functional.normalize(dir_to_hipo, dim=1)  # (B, 2, N)
 
-        dot_products = (dir_to_hipo * mask_vecs).sum(dim=1)  # (B, N)
+        dot_products = (dir_to_hipo * self.mask_vecs).sum(dim=1)  # (B, N)
         scores = (dot_products > 0.9).sum(dim=1)  # (B,)
 
         return scores, hypothesis
