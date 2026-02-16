@@ -3,27 +3,31 @@ import torch
 
 class PVNetRansac:
     def __init__(self, mask: torch.Tensor, vfield: torch.Tensor, num_iter: int):
-        # vfield shape is (B*2, H, W)
+        # vfield shape is (K*2, H, W)
         self.num_keypoints = vfield.size(0) // 2
         self.batch_size = self.num_keypoints
+        self.height = vfield.size(1)
+        self.width = vfield.size(2)
 
         x_components = vfield[: self.num_keypoints]
         y_components = vfield[self.num_keypoints :]
         self.vfield = torch.stack([x_components, y_components], dim=1)  # B, 2, H, W
 
         self.num_iter = num_iter
-        self.valid_index = mask.nonzero()  # N, 2
+        self.valid_index = (mask > 0.5).nonzero()  # N, 2  (row, col)
 
         # Pre-compute used in self.scores
-        self.mask_vecs = self.vfield[:, :, self.valid_index[:, 0], self.valid_index[:, 1]]  # (B, 2, N)
+        self.mask_vecs = self.vfield[
+            :, :, self.valid_index[:, 0], self.valid_index[:, 1]
+        ]  # (B, 2, N)
         # flip valid index to x, y, transpose to 2, N
         self.mask_coords = self.valid_index.flip(1).float().T  # (2, N)
 
     def batched_hypothesis(self):
-        """Batch hypothesis over B keypoits"""
+        """Batch hypothesis over B keypoints"""
 
         assert self.vfield.dim() == 4 and self.vfield.size(1) == 2  # B, 2, H, W
-        assert self.valid_index.dim() == 2 
+        assert self.valid_index.dim() == 2
         assert self.valid_index.size(1) == 2  # N, 2
 
         idx = torch.randperm(self.valid_index.size(0))[:2]
@@ -45,23 +49,35 @@ class PVNetRansac:
         assert p1.size(0) == 2
 
         # Vectorized intersect line
-
         A = torch.stack([v1, -v2], dim=-1)  # B, 2, 2
         b = (p2 - p1).unsqueeze(0).repeat(self.batch_size, 1).float()  # B, 2
 
         assert A.dim() == 3 and A.size(1) == 2 and A.size(2) == 2
         assert b.dim() == 2 and b.size(1) == 2
 
-        t = torch.linalg.solve(A, b)
+        # Detect near-singular systems (parallel vectors)
+        det = A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0]  # (B,)
+        singular = det.abs() < 1e-6
 
-        assert t.size(0) == self.batch_size
+        # Cramer's rule for 2x2 (avoids linalg.solve exceptions on singular)
+        safe_det = det.clone()
+        safe_det[singular] = 1.0  # avoid div-by-zero; result will be invalidated
+        t0 = (A[:, 1, 1] * b[:, 0] - A[:, 0, 1] * b[:, 1]) / safe_det  # (B,)
 
-        return p1 + t[:, 0:1] * v1
+        hypothesis = p1 + t0.unsqueeze(1) * v1  # (B, 2)
+
+        # Mark singular or out-of-bounds hypotheses as NaN
+        oob = (
+            (hypothesis[:, 0] < 0)
+            | (hypothesis[:, 0] >= self.width)
+            | (hypothesis[:, 1] < 0)
+            | (hypothesis[:, 1] >= self.height)
+        )
+        hypothesis[singular | oob] = float("nan")
+
+        return hypothesis
 
     def scores(self, hypothesis: torch.Tensor):
-
-        # vfield (B, 2, H, W)
-        # valid_index (N, 2)
 
         assert hypothesis.size(0) == self.batch_size and hypothesis.size(1) == 2
 
@@ -69,7 +85,10 @@ class PVNetRansac:
         dir_to_hipo = torch.nn.functional.normalize(dir_to_hipo, dim=1)  # (B, 2, N)
 
         dot_products = (dir_to_hipo * self.mask_vecs).sum(dim=1)  # (B, N)
-        scores = (dot_products > 0.9).sum(dim=1)  # (B,)
+
+        # NaN hypotheses → 0 inliers
+        scores = (dot_products > 0.99).sum(dim=1)  # (B,)
+        scores[hypothesis.isnan().any(dim=1)] = 0
 
         return scores, hypothesis
 
@@ -86,13 +105,12 @@ class PVNetRansac:
         all_hypo = torch.stack(all_hypo, dim=0)  # (I, B, 2)
         all_scores = torch.stack(all_scores, dim=0)  # (I, B)
 
-        # best_scores, best_idx = all_scores.max(dim=0) 
-        # final_keypoints = all_hypo[best_idx, torch.arange(self.batch_size)]
+        # Pick the hypothesis with highest consensus per keypoint
+        best_idx = all_scores.argmax(dim=0)  # (B,)
+        final_keypoints = all_hypo[best_idx, torch.arange(self.batch_size)]  # (B, 2)
 
-        # Convert scores to weights and use them to compute 
-        # a weighted average of the hypotheses to get the final keypoints
-        weights = torch.softmax(all_scores.float(), dim=0) # (Iter, B)
-        final_keypoints = (all_hypo * weights.unsqueeze(2)).sum(dim=0) # (B, 2)
+        # weights = torch.softmax(all_scores.float(), dim=0) # (Iter, B)
+        # final_keypoints = (all_hypo * weights.unsqueeze(2)).sum(dim=0) # (B, 2)
 
         return final_keypoints
 
