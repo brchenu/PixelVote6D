@@ -159,7 +159,7 @@ class BOPDirectDataset(Dataset):
 
         self.subset = subset
         subset_dir = (
-            f"{dataset_name}_{subset.value}"
+            f"{dataset_name}{subset.value}"
             if subset == BOPSubSet.TEST
             else subset.value
         )
