@@ -226,7 +226,7 @@ class BOPDirectDataset(Dataset):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         # Load mask
-        mask_path = os.path.join(scene_dir, "mask", mask_filename)
+        mask_path = os.path.join(scene_dir, "mask_visib", mask_filename)
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
         if mask is None:
             raise RuntimeError(f"Could not load mask: {mask_path}")
