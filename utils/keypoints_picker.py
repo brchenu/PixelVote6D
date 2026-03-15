@@ -19,7 +19,23 @@ def _keypoint_spheres(
     return spheres
 
 
-def pick_keypoints(model_path: str, output_path: str, sample_size: int):
+def pick_keypoints(
+    model_path: str,
+    output_path: str,
+    sample_size: int,
+    model_unit: str = "mm",
+):
+    """
+    Pick keypoints from a 3D model and save them in millimeters (BOP standard).
+
+    Args:
+        model_path: path to the 3D model (.ply, .obj, .glb, .gltf, ...)
+        output_path: path where the keypoints .txt will be saved
+        sample_size: number of keypoints to pick via FPS
+        model_unit: unit of the model coordinates. Either "mm" (default) or "m".
+                    BOP PLY models are in mm; BlenderProc GLB models are in m.
+                    When "m", keypoints are multiplied by 1000 before saving.
+    """
     mesh = o3d.io.read_triangle_mesh(model_path)
     point_cloud = mesh.sample_points_uniformly(number_of_points=1000)
 
@@ -29,14 +45,24 @@ def pick_keypoints(model_path: str, output_path: str, sample_size: int):
     fps_pcd = point_cloud.farthest_point_down_sample(sample_size)
     keypoints = np.asarray(fps_pcd.points)
 
-    print(keypoints)
+    # Convert to millimeters if the model is in meters (BOP standard is mm)
+    scale = 1000.0 if model_unit == "m" else 1.0
+    keypoints_mm = keypoints * scale
 
-    # Show keypoints as red spheres overlaid on the mesh
+    # GLB/GLTF from Blender/BlenderProc uses a different coordinate frame than BOP.
+    # trimesh loads GLB in (X, Y_glTF, Z_glTF) space (Y-up, Z-back).
+    # BOP expects OpenCV model space: X' = X, Y' = -Z_glTF, Z' = Y_glTF
+    if model_path.lower().endswith((".glb", ".gltf")):
+        keypoints_mm = keypoints_mm[:, [0, 2, 1]] * np.array([1, -1, 1])
+
+    print(keypoints_mm)
+
+    # Show keypoints as red spheres overlaid on the mesh (in model units)
     mesh.paint_uniform_color([0.7, 0.7, 0.7])
     spheres = _keypoint_spheres(keypoints)
     o3d.visualization.draw_geometries([mesh] + spheres, window_name="Keypoints")
 
-    np.savetxt(output_path, keypoints)
+    np.savetxt(output_path, keypoints_mm)
 
 idx = "000010"
 
@@ -46,4 +72,5 @@ pick_keypoints(
     f"{model_root_dir}/model.glb",
     f"{model_root_dir}/model_keypoints.txt",
     8,
+    model_unit="m",  # BlenderProc GLB models are in meters; saved as mm for BOP
 ) 
