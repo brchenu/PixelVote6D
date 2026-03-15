@@ -30,6 +30,10 @@ class PVNetRansac:
         assert self.valid_index.dim() == 2
         assert self.valid_index.size(1) == 2  # N, 2
 
+        # If the mask valid pixel is too small, return NaN hypotheses which will be ignored in scoring
+        if self.valid_index.size(0) < 2:
+            return torch.full((self.batch_size, 2), float("nan"), device=self.vfield.device)
+
         idx = torch.randperm(self.valid_index.size(0))[:2]
         p1 = self.valid_index[idx[0]]
         p2 = self.valid_index[idx[1]]
