@@ -6,9 +6,46 @@ from torchvision import tv_tensors
 from PIL import Image
 
 
+class PVNetRandomTranform:
+    """PVNET dataset random transform"""
+
+    MEAN = (0.485, 0.456, 0.406)
+    STD = (0.229, 0.224, 0.225)
+
+    def __init__(self, resize: int = 256, crop_size: int = 224):
+        self.resize = resize
+        self.crop_size = crop_size
+
+        self.transform = v2.Compose(
+            [
+                v2.ToImage(),
+                v2.Resize(resize),
+                v2.CenterCrop(crop_size),
+                v2.RandomApply([v2.GaussianBlur(5)], p=0.2),
+                v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(PVNetRandomTranform.MEAN, PVNetRandomTranform.STD),
+            ]
+        )
+
+    def __call__(self, image, mask, keypoints):
+        orig_h, orig_w = image.shape[0], image.shape[1]
+
+        image = tv_tensors.Image(image)
+        mask = tv_tensors.Mask(mask)
+        keypoints = tv_tensors.KeyPoints(
+            torch.from_numpy(keypoints).float(), canvas_size=(orig_h, orig_w)
+        )
+
+        image, mask, keypoints = self.transform(image, mask, keypoints)
+
+        # Convert KeyPoints tensor back to numpy array for generate_vector_field
+        return image, mask, keypoints.numpy()
+
+
 class PVNetTransform:
     """PVNet dataset transform using torchvision v1 transforms."""
-    
+
     MEAN = (0.485, 0.456, 0.406)
     STD = (0.229, 0.224, 0.225)
 
@@ -67,6 +104,7 @@ class PVNetTransform:
         new_h, new_w = int(orig_h * scale), int(orig_w * scale)
         keypoints = keypoints * np.array([new_w / orig_w, new_h / orig_h])
 
+        # Shift keypoints origin to account for center crop
         crop_top = (new_h - self.crop_size) / 2.0
         crop_left = (new_w - self.crop_size) / 2.0
         keypoints = keypoints - np.array([crop_left, crop_top])
@@ -100,7 +138,9 @@ class PVNetTransformV2:
                 v2.Resize(resize),
                 v2.CenterCrop((crop_size, crop_size)),
                 # If dtype is a torch.dtype, ToDtype work only for Image and Video (not for Mask)
-                v2.ToDtype(torch.float32, scale=True),  # Not sure if this is also Called for tv_tensor.Mask ?
+                v2.ToDtype(
+                    torch.float32, scale=True
+                ),  # Not sure if this is also Called for tv_tensor.Mask ?
                 v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
