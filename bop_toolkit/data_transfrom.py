@@ -31,13 +31,19 @@ class PVNetRandomTranform:
     def __call__(self, image, mask, keypoints):
         orig_h, orig_w = image.shape[0], image.shape[1]
 
-        image = tv_tensors.Image(image)
-        mask = tv_tensors.Mask(mask)
+        # Do NOT pre-wrap image as tv_tensors.Image — v2.ToImage() handles HWC→CHW.
+        # Pre-wrapping with tv_tensors.Image on a HWC numpy array leaves the shape
+        # as (H, W, C) since tv_tensors.Image doesn't permute, causing ColorJitter
+        # to see H as the channel count and crash.
+        mask = tv_tensors.Mask(mask[None])  # (H, W) -> (1, H, W)
         keypoints = tv_tensors.KeyPoints(
             torch.from_numpy(keypoints).float(), canvas_size=(orig_h, orig_w)
         )
 
         image, mask, keypoints = self.transform(image, mask, keypoints)
+
+        # ToDtype(scale=True) skips Masks, so values stay 0/255 — normalize to [0,1]
+        mask = (mask > 0).float()
 
         # Convert KeyPoints tensor back to numpy array for generate_vector_field
         return image, mask, keypoints.numpy()
@@ -66,7 +72,7 @@ class PVNetTransform:
             [
                 T.Resize(resize, interpolation=T.InterpolationMode.NEAREST),
                 T.CenterCrop((crop_size, crop_size)),
-                T.ToTensor(),  # Converts PIL to float32 [0, 1]
+                T.ToTensor(),  # Converts PIL uint8 [0,255] to float32 [0,1]
             ]
         )
 
@@ -172,7 +178,7 @@ class PVNetTransformV2:
     def __call__(self, image, mask, keypoints):
         orig_h, orig_w = image.shape[0], image.shape[1]
 
-        image = tv_tensors.Image(image)
+        # Do NOT pre-wrap image — let v2.ToImage() handle HWC→CHW conversion.
         mask = tv_tensors.Mask(mask)
 
         image, mask = self.transform(image, mask)
