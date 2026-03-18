@@ -6,7 +6,7 @@ import argparse
 from bop_toolkit.bop_dataset import BOPDirectDataset, BOPSubSet
 from model import PVNet
 from pathlib import Path
-from bop_toolkit.data_transfrom import PVNetTransform
+from bop_toolkit.data_transfrom import PVNetRandomTranform
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     dataset = BOPDirectDataset(
         dataset_dir=os.path.join(BASE_DIR, "dataset", args.dataset),
         obj_id=args.obj_id,
-        transform=PVNetTransform(),
+        transform=PVNetRandomTranform(),
         subset=BOPSubSet.TRAIN,
     )
 
