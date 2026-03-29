@@ -3,6 +3,7 @@ import time
 import logging
 import torch
 import argparse
+from torch.utils.data import ConcatDataset, WeightedRandomSampler
 from bop_toolkit.bop_dataset import BOPDirectDataset, BOPSubSet
 from model import PVNet
 from pathlib import Path
@@ -44,7 +45,8 @@ if __name__ == "__main__":
         "--obj-id", type=int, required=True, help="Object ID to train on"
     )
     parser.add_argument(
-        "--dataset", type=str, required=True, help="Dataset name (e.g., 'drill')"
+        "--dataset", type=str, nargs="+", required=True,
+        help="One or more dataset names (e.g., --dataset drill drill_hd)"
     )
     parser.add_argument(
         "--epochs", type=int, required=True, help="Number of training epochs"
@@ -54,6 +56,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--batch-size", type=int, default=32, help="Batch size (default: 32)"
+    )
+    parser.add_argument(
+        "--weights",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Sampling weight for each dataset (must match number of --dataset entries). "
+        "E.g. --weights 0.45 0.45 0.10",
     )
     parser.add_argument(
         "--load",
@@ -73,7 +83,8 @@ if __name__ == "__main__":
 
     # --- Output directory setup ---
     output_base = Path(args.output_dir) if args.output_dir else Path.cwd() / "output"
-    run_name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}_obj{args.obj_id}_{args.dataset}"
+    dataset_tag = "+".join(args.dataset)
+    run_name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}_obj{args.obj_id}_{dataset_tag}"
     run_dir = create_run_dir(str(output_base), run_name)
 
     report_path = run_dir / "report.txt"
@@ -81,16 +92,39 @@ if __name__ == "__main__":
 
     logger = init_logger(report_path)
 
+    for name in args.dataset:
+        print(f"name: {name}")
+
     # --- Dataset & dataloader ---
-    dataset = BOPDirectDataset(
-        dataset_dir=os.path.join(BASE_DIR, "dataset", args.dataset),
-        obj_id=args.obj_id,
-        transform=PVNetRandomTranform(),
-        subset=BOPSubSet.TRAIN,
-    )
+    transform = PVNetRandomTranform()
+    datasets = [
+        BOPDirectDataset(
+            dataset_dir=os.path.join(BASE_DIR, "dataset", name),
+            obj_id=args.obj_id,
+            transform=transform,
+            subset=BOPSubSet.TRAIN,
+        )
+        for name in args.dataset
+    ]
+    dataset = ConcatDataset(datasets) if len(datasets) > 1 else datasets[0]
+
+    # --- Weighted sampling ---
+    sampler = None
+    shuffle = True
+    if args.weights is not None:
+        assert len(args.weights) == len(datasets), (
+            f"Number of weights ({len(args.weights)}) must match "
+            f"number of datasets ({len(datasets)})"
+        )
+        sample_weights = []
+        for ds, w in zip(datasets, args.weights):
+            sample_weights.extend([w / len(ds)] * len(ds))
+        sampler = WeightedRandomSampler(sample_weights, num_samples=len(dataset))
+        shuffle = False  # mutually exclusive with sampler
 
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, num_workers=10, shuffle=True
+        dataset, batch_size=args.batch_size, num_workers=10,
+        shuffle=shuffle, sampler=sampler,
     )
 
     # --- Model ---
@@ -113,11 +147,23 @@ if __name__ == "__main__":
     if args.load and "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
+    # Cosine annealing: smoothly decays lr from args.lr down to eta_min over the run.
+    # eta_min=1e-6 avoids fully freezing the model in the final epochs.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=args.epochs, eta_min=1e-6
+    )
+
+    if args.load and "scheduler_state_dict" in checkpoint:
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
     # --- Log run configuration ---
     logger.info("=" * 60)
     logger.info("Run directory    : %s", run_dir)
     logger.info("Device           : %s", device)
-    logger.info("Dataset          : %s  (obj_id=%d)", args.dataset, args.obj_id)
+    logger.info("Dataset(s)       : %s  (obj_id=%d)", dataset_tag, args.obj_id)
+    if args.weights:
+        for name, ds, w in zip(args.dataset, datasets, args.weights):
+            logger.info("  %-16s: %d samples, weight=%.2f", name, len(ds), w)
     logger.info("Dataset size     : %d samples", len(dataset))
     logger.info("Batch size       : %d", args.batch_size)
     logger.info("Learning rate    : %g", args.lr)
@@ -170,13 +216,16 @@ if __name__ == "__main__":
         avg_mask_loss = mask_total_loss / len(dataloader)
         avg_vfield_loss = vfield_total_loss / len(dataloader)
 
+        scheduler.step()
+
         logger.info(
-            "Epoch %d/%d (total %d) | mask_loss=%.6f | vfield_loss=%.6f",
+            "Epoch %d/%d (total %d) | mask_loss=%.6f | vfield_loss=%.6f | lr=%.2e",
             epoch + 1,
             args.epochs,
             prev_epochs + epoch + 1,
             avg_mask_loss,
             avg_vfield_loss,
+            scheduler.get_last_lr()[0],
         )
 
     logger.info("Training completed in %.2f seconds", time.time() - start_time)
@@ -187,6 +236,7 @@ if __name__ == "__main__":
             "epoch": prev_epochs + args.epochs - 1,
             "model_state_dict": pvnet.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
             "mask_loss": mask_total_loss / len(dataloader),
             "vfield_loss": vfield_total_loss / len(dataloader),
         },
