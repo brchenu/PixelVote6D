@@ -5,9 +5,10 @@ import torch
 import argparse
 from torch.utils.data import ConcatDataset, WeightedRandomSampler
 from bop_toolkit.bop_dataset import BOPDirectDataset, BOPSubSet
+from bop_toolkit.self_label_dataset import SelfLabelDataset
 from model import PVNet
 from pathlib import Path
-from bop_toolkit.data_transfrom import PVNetRandomTranform
+from bop_toolkit.data_transfrom import PVNetRandomTranform, PVNetTransform
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -78,12 +79,30 @@ if __name__ == "__main__":
         help="Root directory for outputs. A timestamped sub-folder is created for each run. "
         "Defaults to ./output if not specified.",
     )
+    parser.add_argument(
+        "--self-label",
+        type=str,
+        nargs="+",
+        default=None,
+        help="One or more batch_infer.py output directories to include as self-labeled data. "
+        "E.g. --self-label dataset/self_label/drill2 dataset/self_label/drill7",
+    )
+    parser.add_argument(
+        "--spatial-aug",
+        action="store_true",
+        default=False,
+        help="Add RandomAffine (translate ±15%%, scale 0.8–1.2) to bridge the sim-to-real gap "
+             "caused by Blender always rendering the object centered in the frame.",
+    )
 
     args = parser.parse_args()
 
     # --- Output directory setup ---
     output_base = Path(args.output_dir) if args.output_dir else Path.cwd() / "output"
     dataset_tag = "+".join(args.dataset)
+    if args.self_label:
+        sl_names = [Path(d).name for d in args.self_label]
+        dataset_tag += "+sl_" + "+sl_".join(sl_names)
     run_name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}_obj{args.obj_id}_{dataset_tag}"
     run_dir = create_run_dir(str(output_base), run_name)
 
@@ -92,11 +111,8 @@ if __name__ == "__main__":
 
     logger = init_logger(report_path)
 
-    for name in args.dataset:
-        print(f"name: {name}")
-
     # --- Dataset & dataloader ---
-    transform = PVNetRandomTranform()
+    transform = PVNetRandomTranform(spatial_aug=args.spatial_aug)
     datasets = [
         BOPDirectDataset(
             dataset_dir=os.path.join(BASE_DIR, "dataset", name),
@@ -107,6 +123,14 @@ if __name__ == "__main__":
         for name in args.dataset
     ]
     dataset = ConcatDataset(datasets) if len(datasets) > 1 else datasets[0]
+
+    # --- Self-labeled datasets ---
+    if args.self_label:
+        for sl_dir in args.self_label:
+            sl_ds = SelfLabelDataset(infer_dir=sl_dir, augment=True)
+            datasets.append(sl_ds)
+        # Recompute concat with the added self-label datasets
+        dataset = ConcatDataset(datasets)
 
     # --- Weighted sampling ---
     sampler = None
@@ -177,6 +201,7 @@ if __name__ == "__main__":
         )
     else:
         logger.info("Training from scratch  →  total after run: %d", args.epochs)
+    logger.info("Spatial aug      : %s", "on (RandomAffine)" if args.spatial_aug else "off")
     logger.info("=" * 60)
 
     # --- Training loop ---
