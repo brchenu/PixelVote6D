@@ -49,11 +49,16 @@ def pick_keypoints(
     scale = 1000.0 if model_unit == "m" else 1.0
     keypoints_mm = keypoints * scale
 
-    # GLB/GLTF from Blender/BlenderProc uses a different coordinate frame than BOP.
-    # trimesh loads GLB in (X, Y_glTF, Z_glTF) space (Y-up, Z-back).
-    # BOP expects OpenCV model space: X' = X, Y' = -Z_glTF, Z' = Y_glTF
+    # GLB/GLTF from Blender/BlenderProc: glTF is Y-up, Z-toward-viewer.
+    # Blender imports glTF with an axis swap to its Z-up, Y-forward convention,
+    # and BlenderProc records cam_R_m2c relative to that Blender frame.
+    # Correct conversion: BOP_X = glTF_X, BOP_Y = -glTF_Z, BOP_Z = glTF_Y
     if model_path.lower().endswith((".glb", ".gltf")):
-        keypoints_mm = keypoints_mm[:, [0, 2, 1]] * np.array([1, -1, 1])
+        keypoints_mm = np.column_stack([
+            keypoints_mm[:, 0],
+            -keypoints_mm[:, 2],
+            keypoints_mm[:, 1],
+        ])
 
     print(keypoints_mm)
 
@@ -70,7 +75,7 @@ model_root_dir = "/home/brann/projects/bproc/clean_drill"
 
 pick_keypoints(
     f"{model_root_dir}/model.glb",
-    f"{model_root_dir}/model_keypoints.txt",
+    f"{model_root_dir}/clean_model_keypoints.txt",
     8,
     model_unit="m",  # BlenderProc GLB models are in meters; saved as mm for BOP
 ) 
