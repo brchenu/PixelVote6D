@@ -12,17 +12,29 @@ class PVNetRandomTranform:
     MEAN = (0.485, 0.456, 0.406)
     STD = (0.229, 0.224, 0.225)
 
-    def __init__(self, resize: int = 256, crop_size: int = 224):
+    def __init__(self, resize: int = 256, crop_size: int = 224, spatial_aug: bool = False):
         self.resize = resize
         self.crop_size = crop_size
+
+        spatial_transforms = []
+        if spatial_aug:
+            # Simulate the object appearing off-center and at varying scales,
+            # bridging the gap from Blender's always-centered renders to real footage.
+            # degrees=10 covers plausible camera roll; translate=0.15 shifts up to ~34px
+            # on a 256px image; scale covers ±20%. Applied before CenterCrop.
+            spatial_transforms = [
+                v2.RandomAffine(degrees=10, translate=(0.15, 0.15), scale=(0.8, 1.2)),
+            ]
 
         self.transform = v2.Compose(
             [
                 v2.ToImage(),
                 v2.Resize(resize),
+                *spatial_transforms,
                 v2.CenterCrop(crop_size),
-                v2.RandomApply([v2.GaussianBlur(5)], p=0.2),
-                v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+                v2.RandomAdjustSharpness(sharpness_factor=2, p=0.5),
+                v2.RandomApply([v2.GaussianBlur(5)], p=0.3),
+                v2.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(PVNetRandomTranform.MEAN, PVNetRandomTranform.STD),
             ]
