@@ -3,19 +3,27 @@ import torch
 
 class PVNetRansac:
     def __init__(self, mask: torch.Tensor, vfield: torch.Tensor, num_iter: int):
-        # vfield shape is (K*2, H, W)
-        self.num_keypoints = vfield.size(0) // 2
+
         self.batch_size = self.num_keypoints
+        self.num_iter = num_iter
         self.height = vfield.size(1)
         self.width = vfield.size(2)
 
+        # vfield shape is (K*2, H, W)
+        self.num_keypoints = vfield.size(0) // 2
+
+        # In vfield x components are in the first half channels, y components in the second half
         x_components = vfield[: self.num_keypoints]
         y_components = vfield[self.num_keypoints :]
+
+        # Convert to (K, 2, H, W) for easier indexing
+        # vfield[k, 0] is x component, vfield[k, 1] is y component
         self.vfield = torch.stack([x_components, y_components], dim=1)  # B, 2, H, W
 
-        self.num_iter = num_iter
+        # mask shape is (H, W)
         self.valid_index = (mask > 0.5).nonzero()  # N, 2  (row, col)
 
+        # vfield shape is (B, 2, H, W)
         # Pre-compute used in self.scores
         self.mask_vecs = self.vfield[
             :, :, self.valid_index[:, 0], self.valid_index[:, 1]
@@ -32,7 +40,9 @@ class PVNetRansac:
 
         # If the mask valid pixel is too small, return NaN hypotheses which will be ignored in scoring
         if self.valid_index.size(0) < 2:
-            return torch.full((self.batch_size, 2), float("nan"), device=self.vfield.device)
+            return torch.full(
+                (self.batch_size, 2), float("nan"), device=self.vfield.device
+            )
 
         idx = torch.randperm(self.valid_index.size(0))[:2]
         p1 = self.valid_index[idx[0]]
@@ -117,4 +127,3 @@ class PVNetRansac:
         # final_keypoints = (all_hypo * weights.unsqueeze(2)).sum(dim=0) # (B, 2)
 
         return final_keypoints
-
