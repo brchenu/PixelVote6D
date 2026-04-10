@@ -193,18 +193,13 @@ class BOPDirectDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Return a single training sample.
+    # Minimum fraction of mask pixels that must remain after augmentation.
+    # Samples below this threshold are re-drawn to avoid noisy gradients.
+    MIN_MASK_FRACTION = 0.005  # 0.5 % of image area
+    MAX_RESAMPLE_ATTEMPTS = 5
 
-        Args:
-            idx: Sample index.
-
-        Returns:
-            Tuple of (image, mask, vector_field):
-                - image: (3, H, W) float32 tensor, normalized.
-                - mask: (1, H, W) float32 tensor.
-                - vector_field: (K*2, H, W) float32 tensor.
-        """
+    def _load_raw(self, idx: int):
+        """Load raw image, mask, and keypoints for sample *idx*."""
         sample = self.samples[idx]
         scene = sample["scene"]
         frame = sample["frame"]
@@ -232,9 +227,34 @@ class BOPDirectDataset(Dataset):
             raise RuntimeError(f"Could not load mask: {mask_path}")
 
         keypoints_2d = project_points(self.keypoints_3d, K, R, t)
+        return image, mask, keypoints_2d
 
-        # Apply transforms
-        image, mask, keypoints_2d = self.transform(image, mask, keypoints_2d)
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return a single training sample.
+
+        Args:
+            idx: Sample index.
+
+        Returns:
+            Tuple of (image, mask, vector_field, keypoints_2d):
+                - image: (3, H, W) float32 tensor, normalized.
+                - mask: (1, H, W) float32 tensor.
+                - vector_field: (K*2, H, W) float32 tensor.
+                - keypoints_2d: (K, 2) numpy array of 2D keypoint projections (for evaluation).
+        """
+        raw_image, raw_mask, raw_keypoints_2d = self._load_raw(idx)
+
+        for _ in range(self.MAX_RESAMPLE_ATTEMPTS):
+
+            # /!\ Be sure that between attempt the seed is not the same
+            image, mask, keypoints_2d = self.transform(raw_image, raw_mask, raw_keypoints_2d)
+
+            # Check that the object is still sufficiently visible
+            mask_pixels = (mask > 0.5).sum().item()
+            total_pixels = mask.shape[-2] * mask.shape[-1]
+            if mask_pixels / total_pixels >= self.MIN_MASK_FRACTION:
+                break
+
 
         h, w = image.shape[1], image.shape[2]
 
@@ -249,3 +269,4 @@ class BOPDirectDataset(Dataset):
         tensor_vfield = torch.from_numpy(vector_field).float()
 
         return image, mask, tensor_vfield, keypoints_2d
+
