@@ -6,12 +6,9 @@ import model
 import ransac
 from bop_toolkit.data_transfrom import PVNetTransformV2, PVNetTransform
 
-
 parser = argparse.ArgumentParser(description="Visualize 3D pose")
 parser.add_argument("--img", type=str, required=True)
 parser.add_argument("--checkpoint", type=str, required=True)
-parser.add_argument("--output", type=str, required=True, default=None)
-parser.add_argument("--debug", action="store_true")
 
 args = parser.parse_args()
 
@@ -39,16 +36,25 @@ with torch.no_grad():
     pred_mask, pred_kp = pvnet(img)
 
     pred_mask = pred_mask.squeeze()
-    mask = (
-        (torch.sigmoid(pred_mask) > 0.5).cpu().numpy()
-    )  # threshold on probability, not logit
+    prob_mask = (torch.sigmoid(pred_mask) > 0.5).cpu().numpy()
 
-    # mask_prob = torch.sigmoid(pred_mask).squeeze().cpu().numpy()
+    ransac_solver = ransac.PVNetRansac(
+        mask=pred_mask.squeeze(), vfield=pred_kp.squeeze(), num_iter=1000
+    )
+    keypoints = ransac_solver.ransac()
 
-    if args.debug:
-        # display = img.cpu().squeeze()
-        # display = unnormalize(display)
-        # cv2.imshow("Predicted Keypoints", display.permute(1, 2, 0).numpy())
-        cv2.imshow("Predicted Keypoints", mask.astype(np.uint8) * 255)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    display = img.cpu().squeeze()
+    display = unnormalize(display)  # (3, H, W) uint8 tensor
+
+    # (H, W, 3) uint8 numpy now opencv compatible
+    display = display.permute(1, 2, 0).numpy()
+    display = cv2.cvtColor(display, cv2.COLOR_RGB2BGR)  # fix colors for imshow
+
+    for x, y in keypoints.cpu().numpy():
+        cv2.circle(display, (int(x), int(y)), radius=1, color=(0, 0, 255), thickness=-1)
+
+    display = cv2.resize(display, (640, 640), interpolation=cv2.INTER_NEAREST)
+
+    cv2.imshow("Predicted Keypoints", display)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
