@@ -63,8 +63,8 @@ if __name__ == "__main__":
         type=float,
         nargs="+",
         default=None,
-        help="Sampling weight for each dataset (must match number of --dataset entries). "
-        "E.g. --weights 0.45 0.45 0.10",
+        help="Sampling weight for each dataset, in order: --dataset entries then --self-label "
+             "entries. Total count must match. E.g. --weights 0.25 0.25 0.25 0.25",
     )
     parser.add_argument(
         "--load",
@@ -138,7 +138,8 @@ if __name__ == "__main__":
     if args.weights is not None:
         assert len(args.weights) == len(datasets), (
             f"Number of weights ({len(args.weights)}) must match "
-            f"number of datasets ({len(datasets)})"
+            f"total number of datasets ({len(datasets)}): "
+            f"{len(args.dataset)} --dataset + {len(args.self_label or [])} --self-label"
         )
         sample_weights = []
         for ds, w in zip(datasets, args.weights):
@@ -185,8 +186,9 @@ if __name__ == "__main__":
     logger.info("Run directory    : %s", run_dir)
     logger.info("Device           : %s", device)
     logger.info("Dataset(s)       : %s  (obj_id=%d)", dataset_tag, args.obj_id)
+    all_names = list(args.dataset) + ([Path(d).name for d in args.self_label] if args.self_label else [])
     if args.weights:
-        for name, ds, w in zip(args.dataset, datasets, args.weights):
+        for name, ds, w in zip(all_names, datasets, args.weights):
             logger.info("  %-16s: %d samples, weight=%.2f", name, len(ds), w)
     logger.info("Dataset size     : %d samples", len(dataset))
     logger.info("Batch size       : %d", args.batch_size)
