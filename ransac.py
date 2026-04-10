@@ -4,6 +4,7 @@ import torch
 class PVNetRansac:
     def __init__(self, mask: torch.Tensor, vfield: torch.Tensor, num_iter: int):
 
+        self.num_keypoints = vfield.size(0) // 2
         self.batch_size = self.num_keypoints
         self.num_iter = num_iter
         self.height = vfield.size(1)
