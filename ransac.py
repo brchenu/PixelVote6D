@@ -81,14 +81,8 @@ class PVNetRansac:
 
         hypothesis = p1 + t0.unsqueeze(1) * v1  # (B, 2)
 
-        # Mark singular or out-of-bounds hypotheses as NaN
-        oob = (
-            (hypothesis[:, 0] < 0)
-            | (hypothesis[:, 0] >= self.width)
-            | (hypothesis[:, 1] < 0)
-            | (hypothesis[:, 1] >= self.height)
-        )
-        hypothesis[singular | oob] = float("nan")
+        # Mark singular as NaN
+        hypothesis[singular] = float("nan")
 
         return hypothesis
 
