@@ -117,14 +117,23 @@ class PVNetRansac:
             all_hypo.append(hypo_points)
             all_scores.append(scores)
 
+        # Where I is the number of iterations, B is batch size (number of keypoints)
         all_hypo = torch.stack(all_hypo, dim=0)  # (I, B, 2)
         all_scores = torch.stack(all_scores, dim=0)  # (I, B)
 
-        # Pick the hypothesis with highest consensus per keypoint
-        best_idx = all_scores.argmax(dim=0)  # (B,)
-        final_keypoints = all_hypo[best_idx, torch.arange(self.batch_size)]  # (B, 2)
+        # # Pick the hypothesis with highest consensus per keypoint
+        # best_idx = all_scores.argmax(dim=0)  # (B,)
+        # final_keypoints = all_hypo[best_idx, torch.arange(self.batch_size)]  # (B, 2)
 
-        # weights = torch.softmax(all_scores.float(), dim=0) # (Iter, B)
-        # final_keypoints = (all_hypo * weights.unsqueeze(2)).sum(dim=0) # (B, 2)
+        # Filter NaN hypotheses before weighted average
+        # By setting NaN hypo to (0,0) and score to 0
+        valid_mask = torch.isfinite(all_hypo).all(dim=2) # (I, B)
+        safe_scores = all_scores * valid_mask.to(all_scores.dtype)
+        safe_hypo = torch.where(valid_mask.unsqueeze(2), all_hypo, torch.zeros_like(all_hypo))
+
+        # Softmax weigthted average
+        # Penalize low-score hypotheses by setting their weight close to zero
+        weights = torch.softmax(safe_scores.float(), dim=0) # (Iter, B)
+        final_keypoints = (safe_hypo * weights.unsqueeze(2)).sum(dim=0) # (B, 2)
 
         return final_keypoints
