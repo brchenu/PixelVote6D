@@ -1,4 +1,170 @@
-# Notes on PVNet archi
+# PVNet re-implementation from scratch
+
+This project contains an implementation of the PVNet (Pixel Voting Network) model, which goal is to find keypoints of an object in order to then solve its 6DOF position.
+
+
+This project was mainly done in a project based learning approach, in order to understand better model creation with Pytorch, pre-training, transfer learning, data manipulation and generation, syntehtic data generation and sim-to-real concept and so on.
+
+
+Model architecure: 
+
+The PVNet model use a FCN (Fully Convolutional Network)
+ 
+It is based on a "U-Net" like architecture, with en Encoder and a Decoder.
+The Encoder is based on the ResNet18 architecture, its role is to extract features, it compress the input into a meaningful feature map.
+
+The Decoder, is a serie of upsampling layers that bring image back to it's original resolution.
+
+Input: C, H, W
+Backbone: ResNet18
+Output: 
+- Vector field (C, H, W) where C = 2K + 1, where K is number of keypoints
+- Mask (mask is a probabilty map of pixels, where its the proba that each pixels are part of the detected object)
+
+ResNet18 is used as a backbone but its modified.
+
+### Output details
+
+Vector field 
+
+For a single keypoint K, every pixels p inside the object, mask is assigned a 2D unit vector $V_k(p)$
+
+- Keypoint $(x_k, y_k)$
+- Current pixel $(x_p, y_p)$
+
+$$ 
+ V_k(p) =  \frac{(x_k - x_p, y_k - y_p)}{\sqrt{(x_k - x_p)² + (y_k - y_p)²}}
+$$
+
+The term "field", if done for every pixels you end up with a map directions, looking like a magnetic field.
+
+#### Vfield training data
+
+To generate the vector field label data from a list of 3D keypoints with the transformation matrix of the object relative to the camera here are the steps:
+
+1. Project keypoints to get 2D info (x_k, y_k)
+
+2. For every pixels (u, v) in yout object mask
+        - calculate the direction towards the keypoints.
+        - normalize it 
+
+3. Save this as a 2 channel image, one channel for X and one channel for Y, (if you have 8 keypoints it will gives you 16 channel 8x2 components)
+
+
+## Training 
+
+### Binary Cross-Entropy (BCE) for Mask Prediction
+
+For per-pixel object masks, each pixel represents a binary classification:
+
+0 : background  
+1 : object
+
+The network predics raw logits for each pixel, which are real numbers, sigmoid activation converts these logits into probabilites [0, 1] (BCE require probabilites as input).
+
+BCE measures the divergence between the predicted probability and the ground truth:
+
+- Encourages high probability for object pixels
+- Encourages low probability for background pixels
+- Penalizes confident but wrong predictions more than linear losses like MSE
+
+> In our case we use BCEWithLogitsLoss (PyTorch) which integrates sigmoid + BCE in a numerically stable way, so raw logits can be used directly.
+
+#### When to choose BCE
+
+- When the target is binary (0/1) per element (pixel, keypoint presence, etc.)
+- When predictions should be interpreted as probabilities
+- When confident mistakes should be penalized heavily
+
+### SmoothL1Loss
+
+Vector loss: Loss only calculated for pixels inside the ground truth mask, the formula looks difference betweeen $V_{pred}$ and $V_{truth}$ 
+
+(?) what is $V_{truth}$ since mask can be different
+(?) why use and mask and a vfield and not directly uniquely create vector for pixels in the mask ? why do we need both ? 
+
+### PBR (Physically Based Rendering)
+
+
+## Architecture
+
+The model backbone is based on ResNet18. 
+ResNet make use of skip connections, 
+
+
+Image -> PVNet Model -> RANSAC -> SolvePnP -> 6DOF Pose
+
+
+### RANSAC
+
+The RANSAC part of the pipeline is here to find the best keypoints possible from the predicted vector field.
+To do that the RANSAC pipeline performs different stages:
+
+#### 1. Hypothesis compute 
+
+1. Pick 2 random pixels inside the object mask
+2. Use the predicted vector from those pixels to compute the ray intersection
+3. The computed intersection point is our Hypothesis H
+
+#### 2. The scoring (consensus part)
+
+Now with our hypothesis (H) we want to ask for every other vector in our mask vfield, if they agree to this keypoint Hypothesis H.
+
+For every pixel in the mask $p_i$
+
+1. Compute vector from pixel to H
+
+$u_i = normalize(H - p_i)$
+
+2. Dot product between the comupted vector hypo $u_i$ and the actual prediction $v_i$
+
+$score_i = v_i . u_i$
+
+3. Check if the $score_i$ is high enough usually > 0.99  
+
+#### 3. Determine final keypoints
+
+Once we have our hypothesis and their associated scores, we can determine the final keypoints.
+
+Multiples way to get the final keypoints:
+
+- Select the keypoints with the highest scores (simplest method)
+- Perform a Weighted Mean, where you weight each hypothesis by it's score
+
+$$\mu = \frac{\sum (score_i \cdot H_i)}{\sum score_i}$$
+
+- Or like in PVNet paper treat our hypothesis and scores as a **Spatial Probability Distribution**
+
+##### Case when No valid hypothesis
+
+No valid hypothesis can happen when, for one keypints every sampled hypo was either: 
+
+1. singluar, form nearly parallel vectors
+2. out of bounds
+
+That can happen if: 
+
+- The vector field for that keypoint is noisy or inconsistent
+- Object heavily occluded or absent
+- Mask roughly right but direction prediction are bad
+
+##### Ray Intersection via Carmer's Rule
+
+So in the hypothesis step we need to find the intersection point H of two point pixels $p_1, p_2$ with predicted direction vectors $v_1, v_2$. This requires solving the linear system:
+
+$p_1 + t1 * v_1 = p_2 + t_2 * v_2$
+
+Which can be written as the matrix equation $Ax = b$:$$\begin{bmatrix} v_{1x} & -v_{2x} \\ v_{1y} & -v_{2y} \end{bmatrix} \begin{bmatrix} t_1 \\ t_2 \end{bmatrix} = \begin{bmatrix} p_{2x} - p_{1x} \\ p_{2y} - p_{1y} \end{bmatrix}$$
+
+
+Instead of using an iterative solver (like `torch.linalg.solve`), we use **Cramer’s Rule** to solve for the distance $t_1$ directly using determinants:$$t_1 = \frac{\det(A_{replace\_col1})}{\det(A)}$$The final intersection point is then: $H = p_1 + t_1 v_1$.
+
+Tow main advantages:
+
+- Compute efficiency
+- Numerical Safety By calculating the determinant ($\det A $), we can immediately identify parallel rays (where $\det \approx 0$) and mask them as invalid (NaN) before they cause a crash or numerical instability.
+
+# Notes on PVNet arch
 
 ### Skip connections
 
@@ -60,6 +226,7 @@ ResNet                                   [1, 1000]                 --
 │    │    └─ReLU: 3-3                    [1, 64, 56, 56]           --
 │    │    └─Conv2d: 3-4                  [1, 64, 56, 56]           36,864
 │    │    └─BatchNorm2d: 3-5             [1, 64, 56, 56]           128
+
 │    │    └─ReLU: 3-6                    [1, 64, 56, 56]           --
 │    └─BasicBlock: 2-2                   [1, 64, 56, 56]           --
 │    │    └─Conv2d: 3-7                  [1, 64, 56, 56]           36,864
@@ -129,3 +296,69 @@ Forward/backward pass size (MB): 39.75
 Params size (MB): 46.76
 Estimated Total Size (MB): 87.11
 ==========================================================================================
+
+
+#### File structure note
+
+my-repo/
+│
+├── pyproject.toml
+├── README.md
+├── requirements.txt   (or only pyproject.toml)
+├── .gitignore
+│
+├── src/
+│   └── myproject/
+│       ├── __init__.py
+│       │
+│       ├── training/
+│       │   ├── train.py
+│       │   ├── evaluate.py
+│       │   └── losses.py
+│       │
+│       ├── inference/
+│       │   ├── inference.py
+│       │   └── batch_infer.py
+│       │
+│       ├── models/
+│       │   ├── model.py
+│       │   └── layers.py
+│       │
+│       ├── data/
+│       │   ├── dataset.py
+│       │   ├── loaders.py
+│       │   └── preprocessing.py
+│       │
+│       ├── utils/
+│       │   ├── logging.py
+│       │   ├── io.py
+│       │   └── math.py
+│       │
+│       ├── geometry/
+│       │   ├── ransac.py
+│       │   ├── bop_toolkit/
+│       │   └── view_kp.py
+│       │
+│       └── pipelines/
+│           └── pipeline.py
+│
+├── scripts/
+│   ├── train.py
+│   ├── test.py
+│   ├── self_label.py
+│   └── export_model.py
+│
+├── configs/
+│   ├── train.yaml
+│   ├── model.yaml
+│   └── dataset.yaml
+│
+├── tests/
+│   ├── test_model.py
+│   ├── test_pipeline.py
+│   └── test_utils.py
+│
+├── assets/
+├── checkpoints/
+├── outputs/
+└── datasets/   (or external path only)
