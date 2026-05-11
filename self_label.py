@@ -37,9 +37,10 @@ with torch.no_grad():
 
     pred_mask = pred_mask.squeeze()
     prob_mask = (torch.sigmoid(pred_mask) > 0.5).cpu().numpy()
+    binary_mask = torch.from_numpy(prob_mask).to(device=pred_mask.device, dtype=torch.float32)
 
     ransac_solver = ransac.PVNetRansac(
-        mask=pred_mask.squeeze(), vfield=pred_kp.squeeze(), num_iter=1000
+        mask=binary_mask, vfield=pred_kp.squeeze(), num_iter=1000
     )
     keypoints = ransac_solver.ransac()
 

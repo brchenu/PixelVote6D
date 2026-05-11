@@ -20,8 +20,9 @@ class PVNetRansac:
         # vfield[k, 0] is x component, vfield[k, 1] is y component
         self.vfield = torch.stack([x_components, y_components], dim=1)  # K, 2, H, W
 
-        # valid index shape is (N, 2) where N is the number of valid pixels, and each row is (row, col)
-        self.valid_index = (mask > 0.5).nonzero()  # N, 2  (row, col)
+        # mask is expected to be a binary foreground mask with shape (H, W).
+        # valid index shape is (N, 2) where each row is (row, col).
+        self.valid_index = mask.nonzero()  # N, 2  (row, col)
 
         # vfield shape is (K, 2, H, W)
         # Pre-compute used in self.scores
@@ -53,7 +54,6 @@ class PVNetRansac:
 
         assert self.vfield.dim() == 4 and self.vfield.size(1) == 2  # (K, 2, H, W)
         assert self.valid_index.dim() == 2 and self.valid_index.size(1) == 2  # (N, 2)
-        assert num_samples >= 1
 
         # If the mask valid pixel is too small, return NaN hypotheses which will be ignored in scoring
         if self.valid_index.size(0) < 2:

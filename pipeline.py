@@ -109,8 +109,9 @@ for image, mask, vfield, keypoints_2d in datasetloader:
 
     pred_mask = pred_mask.squeeze()
     pred_vfield = pred_vfield.squeeze(0)
+    binary_mask = (pred_mask > 0).float()
 
-    pvnet_ransac = PVNetRansac(mask=pred_mask, vfield=pred_vfield, num_iter=256)
+    pvnet_ransac = PVNetRansac(mask=binary_mask, vfield=pred_vfield, num_iter=256)
     final_keypoints = pvnet_ransac.ransac()
 
     img = PVNetTransform.unnormalize_image(image.squeeze())
