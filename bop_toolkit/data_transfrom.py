@@ -192,6 +192,21 @@ class PVNetTransformV2:
         keypoints = keypoints - np.array([crop_left, crop_top])
 
         return keypoints
+    
+    def inverse_transform_keypoints(self, keypoints: np.ndarray, orig_h: int, orig_w: int) -> np.ndarray:
+        """Transform back keypoints from transformed image space to original image space"""
+        scale = self.resize / min(orig_h, orig_w)
+        new_h, new_w = int(orig_h * scale), int(orig_w * scale)
+
+        crop_top = (new_h - self.crop_size) / 2.0
+        crop_left = (new_w - self.crop_size) / 2.0
+        
+        # Invert transform: crop then scale
+        keypoints = keypoints + np.array([crop_left, crop_top])        
+        keypoints = keypoints * np.array([orig_w/ new_w, orig_h/ new_h])
+
+        return keypoints
+
 
     def __call__(self, image, mask, keypoints):
         orig_h, orig_w = image.shape[0], image.shape[1]
