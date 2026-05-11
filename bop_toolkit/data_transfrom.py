@@ -5,12 +5,15 @@ import torchvision.transforms as T
 from torchvision import tv_tensors
 from PIL import Image
 
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+
 
 class PVNetRandomTranform:
     """PVNET dataset random transform"""
 
-    MEAN = (0.485, 0.456, 0.406)
-    STD = (0.229, 0.224, 0.225)
+    MEAN = IMAGENET_MEAN
+    STD = IMAGENET_STD
 
     def __init__(self, resize: int = 256, crop_size: int = 224, spatial_aug: bool = False):
         self.resize = resize
@@ -36,7 +39,7 @@ class PVNetRandomTranform:
                 v2.RandomApply([v2.GaussianBlur(5)], p=0.3),
                 v2.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
                 v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(PVNetRandomTranform.MEAN, PVNetRandomTranform.STD),
+                v2.Normalize(IMAGENET_MEAN, IMAGENET_STD),
             ]
         )
 
@@ -64,8 +67,8 @@ class PVNetRandomTranform:
 class PVNetTransform:
     """PVNet dataset transform using torchvision v1 transforms."""
 
-    MEAN = (0.485, 0.456, 0.406)
-    STD = (0.229, 0.224, 0.225)
+    MEAN = IMAGENET_MEAN
+    STD = IMAGENET_STD
 
     def __init__(self, resize: int = 256, crop_size: int = 224):
         self.resize = resize
@@ -76,7 +79,7 @@ class PVNetTransform:
                 T.Resize(resize, interpolation=T.InterpolationMode.BILINEAR),
                 T.CenterCrop((crop_size, crop_size)),
                 T.ToTensor(),  # Converts PIL to float32 [0, 1]
-                T.Normalize(mean=PVNetTransform.MEAN, std=PVNetTransform.STD),
+                T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ]
         )
 
@@ -97,8 +100,8 @@ class PVNetTransform:
         """
         device = tensor.device
 
-        mean = torch.tensor(PVNetTransform.MEAN).reshape(3, 1, 1).to(device)
-        std = torch.tensor(PVNetTransform.STD).reshape(3, 1, 1).to(device)
+        mean = torch.tensor(IMAGENET_MEAN).reshape(3, 1, 1).to(device)
+        std = torch.tensor(IMAGENET_STD).reshape(3, 1, 1).to(device)
 
         image = (tensor * std) + mean
         image = image.clamp(0.0, 1.0)
@@ -146,6 +149,9 @@ class PVNetTransform:
 class PVNetTransformV2:
     """Transform for PVNet dataset samples, using torchvision v2 transforms."""
 
+    MEAN = IMAGENET_MEAN
+    STD = IMAGENET_STD
+
     def __init__(self, resize: int = 256, crop_size: int = 224):
         self.resize = resize
         self.crop_size = crop_size
@@ -159,7 +165,7 @@ class PVNetTransformV2:
                 v2.ToDtype(
                     torch.float32, scale=True
                 ),  # Not sure if this is also Called for tv_tensor.Mask ?
-                v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                v2.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ]
         )
 
