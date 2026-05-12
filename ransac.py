@@ -84,7 +84,9 @@ class PVNetRansac:
 
         # Vectorized intersect line
         A = torch.stack([v1, -v2], dim=-1)  # (I, K, 2, 2)
-        b = (p2 - p1).unsqueeze(1).expand(-1, self.num_keypoints, -1).float()  # from (I, 2) to (I, K, 2)
+        b = (
+            (p2 - p1).unsqueeze(1).expand(-1, self.num_keypoints, -1).float()
+        )  # from (I, 2) to (I, K, 2)
 
         assert A.dim() == 4 and A.size(2) == 2 and A.size(3) == 2
         assert b.dim() == 3 and b.size(2) == 2
@@ -130,6 +132,8 @@ class PVNetRansac:
         dir_to_hypo = (
             hypothesis[:, :, :, None] - self.mask_coords[None, None, :, :]
         )  # (I, K, 2, N)
+
+        # Maybe use euclid squared norm instead ?
         dir_to_hypo = torch.nn.functional.normalize(dir_to_hypo, dim=2)  # (I, K, 2, N)
 
         dot_products = (dir_to_hypo * self.mask_vecs[None, :, :, :]).sum(
@@ -147,10 +151,6 @@ class PVNetRansac:
         all_hypo = self.batched_hypothesis(num_samples=self.num_iter)  # (I, K, 2)
         all_scores, all_hypo = self.scores(all_hypo)  # (I, K), (I, K, 2)
 
-        # # Pick the hypothesis with highest consensus per keypoint
-        # best_idx = all_scores.argmax(dim=0)  # (K,)
-        # final_keypoints = all_hypo[best_idx, torch.arange(self.num_keypoints)]  # (K, 2)
-
         # Filter NaN hypotheses before weighted average
         # By setting NaN hypo to (0,0) and score to 0
         valid_mask = torch.isfinite(all_hypo).all(dim=2)  # (I, K)
@@ -163,5 +163,12 @@ class PVNetRansac:
         # Penalize low-score hypotheses by setting their weight close to zero
         weights = torch.softmax(safe_scores.float(), dim=0)  # (Iter, K)
         final_keypoints = (safe_hypo * weights.unsqueeze(2)).sum(dim=0)  # (K, 2)
+
+        # # Covariance
+        # X = safe_hypo.permute(1, 2, 0)  # (K, 2, I)
+        # N = X.size(2)
+        # centered = X - X.mean(dim=2, keepdim=True)  # (K, 2, I)
+        # cov = centered @ centered.transpose(-1, -2) / N  # (K, 2, 2)
+        # print(f"covariance: {cov[0,:, :]}")
 
         return final_keypoints
