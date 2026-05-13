@@ -8,27 +8,138 @@ from smoothing import PoseSmoother
 
 RANSAC_THRESHOLD = 0.5
 MIN_MASK_PIXELS = 600
-AXIS_LENGTH_MM = 30.0
+AXIS_LENGTH_MM = 60.0
+
+# Semantic frame offset used to draw the coordinate system at the drill bottom.
+R_offset = np.array(
+    [
+        [0.99286581, 0.00891773, 0.11890312],
+        [0.00891773, 0.98885283, -0.14862890],
+        [-0.11890312, 0.14862890, 0.98171865],
+    ],
+    dtype=np.float32,
+)
+t_offset = np.array(
+    [-16.46857737, -24.41427828, 28.85704377],
+    dtype=np.float32,
+)
 
 
 def is_point_in_image(x, y, img_width, img_height):
     return 0 <= x < img_width and 0 <= y < img_height
 
 
+def inverse_transform_mask(
+    mask: np.ndarray, orig_h: int, orig_w: int, tfm: PVNetTransformV2
+) -> np.ndarray:
+    scale = tfm.resize / min(orig_h, orig_w)
+    new_h = int(orig_h * scale)
+    new_w = int(orig_w * scale)
+
+    crop_top = int((new_h - tfm.crop_size) / 2.0)
+    crop_left = int((new_w - tfm.crop_size) / 2.0)
+
+    canvas = np.zeros((new_h, new_w), dtype=np.float32)
+    canvas[
+        crop_top : crop_top + tfm.crop_size, crop_left : crop_left + tfm.crop_size
+    ] = mask.astype(np.float32)
+    return cv2.resize(canvas, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR)
+
+
+def draw_keypoints(img, keypoints, radius=4, font_scale=0.5, thickness=1):
+    for idx, (x, y) in enumerate(keypoints):
+        if not np.isfinite([x, y]).all():
+            continue
+        cv2.circle(img, (int(x), int(y)), radius, (0, 255, 0), -1)
+        cv2.putText(
+            img,
+            str(idx),
+            (int(x) + radius + 2, int(y) - radius - 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (0, 255, 0),
+            thickness,
+            cv2.LINE_AA,
+        )
+    return img
+
+
 def draw_axes(img, rvec, tvec, camera_matrix, axis_length=AXIS_LENGTH_MM):
-    axes_3d = np.float32(
+    axes_local = np.float32(
         [[axis_length, 0, 0], [0, axis_length, 0], [0, 0, axis_length], [0, 0, 0]]
     )
+    axes_3d = (axes_local @ R_offset.T) + t_offset
     points_2d, _ = cv2.projectPoints(
         axes_3d, rvec, tvec, camera_matrix, np.zeros(4, dtype=np.float64)
     )
     points_2d = points_2d.reshape(-1, 2).astype(int)
 
     origin = tuple(points_2d[3])
-    cv2.line(img, origin, tuple(points_2d[0]), (0, 0, 255), 2)
-    cv2.line(img, origin, tuple(points_2d[1]), (0, 255, 0), 2)
-    cv2.line(img, origin, tuple(points_2d[2]), (255, 0, 0), 2)
+    cv2.line(img, origin, tuple(points_2d[0]), (0, 0, 255), 4)
+    cv2.line(img, origin, tuple(points_2d[1]), (0, 255, 0), 4)
+    cv2.line(img, origin, tuple(points_2d[2]), (255, 0, 0), 4)
     return img
+
+
+def draw_mask_overlay(img, mask_prob_full, alpha=0.45):
+    mask_u8 = (np.clip(mask_prob_full, 0.0, 1.0) * 255).astype(np.uint8)
+    mask_color = cv2.applyColorMap(mask_u8, cv2.COLORMAP_INFERNO)
+    overlay = cv2.addWeighted(img, 1.0 - alpha, mask_color, alpha, 0.0)
+
+    binary_mask = (mask_prob_full > RANSAC_THRESHOLD).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(
+        binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    cv2.drawContours(overlay, contours, -1, (255, 255, 255), 2)
+    return overlay
+
+
+def build_debug_panel(axes_img, keypoints_img, overlay_img, mask_prob_full):
+    cell0 = axes_img.copy()
+    cv2.putText(
+        cell0, "pose", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3
+    )
+    cv2.putText(
+        cell0, "pose", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1
+    )
+
+    mask_u8 = (np.clip(mask_prob_full, 0.0, 1.0) * 255).astype(np.uint8)
+    cell1 = cv2.applyColorMap(mask_u8, cv2.COLORMAP_INFERNO)
+    cv2.putText(
+        cell1, "pred mask", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1
+    )
+
+    cell2 = keypoints_img.copy()
+    cv2.putText(
+        cell2, "pred keypoints", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3
+    )
+    cv2.putText(
+        cell2,
+        "pred keypoints",
+        (8, 22),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (255, 255, 255),
+        1,
+    )
+
+    cell3 = overlay_img.copy()
+    cv2.putText(
+        cell3, "mask overlay", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3
+    )
+    cv2.putText(
+        cell3,
+        "mask overlay",
+        (8, 22),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (255, 255, 255),
+        1,
+    )
+
+    top = np.concatenate([cell0, cell1], axis=1)
+    bottom = np.concatenate([cell2, cell3], axis=1)
+    return np.concatenate([top, bottom], axis=0)
 
 
 CHECKPOINT_PATH = "checkpoints/2026-04-02_14-56-01_obj1_drill_hd+drill_cut+sl_drill2+sl_real/checkpoint.pth"
@@ -68,6 +179,9 @@ while True:
         break
 
     display_frame = cv2.undistort(frame, camera_matrix, distortion_coeffs)
+    axes_frame = display_frame.copy()
+    keypoints_frame = display_frame.copy()
+
     img = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
     img = pvnet_transform.transform(img)
 
@@ -76,59 +190,40 @@ while True:
 
     mask_proba = torch.sigmoid(mask.squeeze(0).squeeze(0))
     mask_binary = (mask_proba > RANSAC_THRESHOLD).float()
+    mask_prob_full = inverse_transform_mask(
+        mask_proba.cpu().numpy(),
+        display_frame.shape[0],
+        display_frame.shape[1],
+        pvnet_transform,
+    )
+    overlay_frame = draw_mask_overlay(display_frame.copy(), mask_prob_full)
+    orig_keypoints = np.empty((0, 2), dtype=np.float64)
 
-    # If the mask is too small skip RANSAC 
-    # and display frame and mask
-    if int(mask_binary.sum().item()) < MIN_MASK_PIXELS:
-        mask_vis = (mask_proba.cpu().numpy() * 255).astype(np.uint8)
-        mask_vis = cv2.applyColorMap(mask_vis, cv2.COLORMAP_INFERNO)
-        mask_vis = cv2.resize(
-            mask_vis, (display_frame.shape[1], display_frame.shape[0])
+    if int(mask_binary.sum().item()) >= MIN_MASK_PIXELS:
+        keypoints = PVNetRansac(mask_binary, vfield.squeeze(0), num_iter=512).ransac()
+        orig_keypoints = pvnet_transform.inverse_transform_keypoints(
+            keypoints.cpu().numpy(), display_frame.shape[0], display_frame.shape[1]
         )
-        side_by_side = np.hstack([display_frame, mask_vis])
+        draw_keypoints(keypoints_frame, orig_keypoints)
 
-        cv2.imshow("frame", side_by_side)
-        if cv2.waitKey(1) == ord("q"):
-            break
+        valid_keypoints = np.isfinite(orig_keypoints).all(axis=1)
+        if valid_keypoints.sum() >= 4:
+            success, rvec, tvec, _ = cv2.solvePnPRansac(
+                keypoints_3d[valid_keypoints],
+                orig_keypoints[valid_keypoints].astype(np.float64).reshape(-1, 1, 2),
+                camera_matrix,
+                distCoeffs=np.zeros(4, dtype=np.float64),
+                flags=cv2.SOLVEPNP_ITERATIVE,
+            )
+            if success:
+                rvec, tvec = smoother.update(rvec, tvec)
+                draw_axes(axes_frame, rvec, tvec, camera_matrix)
 
-        continue
-
-    keypoints = PVNetRansac(mask_binary, vfield.squeeze(0), num_iter=512).ransac()
-
-    orig_keypoints = pvnet_transform.inverse_transform_keypoints(
-        keypoints.cpu().numpy(), display_frame.shape[0], display_frame.shape[1]
+    panel = build_debug_panel(
+        axes_frame, keypoints_frame, overlay_frame, mask_prob_full
     )
 
-    valid_keypoints = np.isfinite(orig_keypoints).all(axis=1)
-    if valid_keypoints.sum() >= 4:
-        success, rvec, tvec, _= cv2.solvePnPRansac(
-            keypoints_3d[valid_keypoints],
-            orig_keypoints[valid_keypoints].astype(np.float64).reshape(-1, 1, 2),
-            camera_matrix,
-            distCoeffs=np.zeros(4, dtype=np.float64),
-            flags=cv2.SOLVEPNP_ITERATIVE,
-        )
-        if success:
-            rvec, tvec = smoother.update(rvec, tvec)
-            draw_axes(display_frame, rvec, tvec, camera_matrix)
-
-    for x, y in orig_keypoints:
-        if is_point_in_image(x, y, display_frame.shape[1], display_frame.shape[0]):
-            cv2.circle(
-                display_frame,
-                (int(x), int(y)),
-                radius=3,
-                color=(0, 255, 0),
-                thickness=-1,
-            )
-
-    # Display
-    mask_vis = (mask_proba.cpu().numpy() * 255).astype(np.uint8)
-    mask_vis = cv2.applyColorMap(mask_vis, cv2.COLORMAP_INFERNO)
-    mask_vis = cv2.resize(mask_vis, (display_frame.shape[1], display_frame.shape[0]))
-    side_by_side = np.hstack([display_frame, mask_vis])
-
-    cv2.imshow("frame", side_by_side)
+    cv2.imshow("frame", panel)
     if cv2.waitKey(1) == ord("q"):
         break
 
