@@ -4,6 +4,7 @@ import numpy as np
 from model import PVNet
 from ransac import PVNetRansac
 from bop_toolkit.data_transfrom import PVNetTransformV2
+from smoothing import PoseSmoother
 
 RANSAC_THRESHOLD = 0.5
 MIN_MASK_PIXELS = 600
@@ -31,7 +32,7 @@ def draw_axes(img, rvec, tvec, camera_matrix, axis_length=AXIS_LENGTH_MM):
 
 
 CHECKPOINT_PATH = "checkpoints/2026-04-02_14-56-01_obj1_drill_hd+drill_cut+sl_drill2+sl_real/checkpoint.pth"
-CAMERA_CALIB_PATH = "dataset/realfootage/drill3/calibration/"
+CAMERA_CALIB_PATH = "dataset/realfootage/drill2/calibration/"
 OBJ_3D_KEYPOINTS_PATH = "dataset/drill_hd/models/obj_000001_keypoints.txt"
 
 camera_matrix = np.loadtxt(CAMERA_CALIB_PATH + "camera_matrix.txt")
@@ -56,6 +57,8 @@ pvnet.to(device)
 # Init image transform
 pvnet_transform = PVNetTransformV2()
 
+smoother = PoseSmoother(alpha_rvec=0.8, alpha_tvec=0.8)
+
 while True:
     ret, frame = cap.read()
 
@@ -76,7 +79,6 @@ while True:
 
     # If the mask is too small skip RANSAC 
     # and display frame and mask
-    print(f"mask pixels: {mask_binary.sum().item():.0f}")
     if int(mask_binary.sum().item()) < MIN_MASK_PIXELS:
         mask_vis = (mask_proba.cpu().numpy() * 255).astype(np.uint8)
         mask_vis = cv2.applyColorMap(mask_vis, cv2.COLORMAP_INFERNO)
@@ -99,7 +101,7 @@ while True:
 
     valid_keypoints = np.isfinite(orig_keypoints).all(axis=1)
     if valid_keypoints.sum() >= 4:
-        success, rvec, tvec = cv2.solvePnP(
+        success, rvec, tvec, _= cv2.solvePnPRansac(
             keypoints_3d[valid_keypoints],
             orig_keypoints[valid_keypoints].astype(np.float64).reshape(-1, 1, 2),
             camera_matrix,
@@ -107,6 +109,7 @@ while True:
             flags=cv2.SOLVEPNP_ITERATIVE,
         )
         if success:
+            rvec, tvec = smoother.update(rvec, tvec)
             draw_axes(display_frame, rvec, tvec, camera_matrix)
 
     for x, y in orig_keypoints:
