@@ -1,10 +1,10 @@
-import torch
 import cv2
+import torch
 import argparse
-import numpy as np
-import model
-import ransac
-from bop_toolkit.data_transfrom import PVNetTransformV2, PVNetTransform
+
+from pixelvote6d.models import PVNet
+from pixelvote6d.pose import PVNetRansac
+from pixelvote6d.dataset import PVNetTransformV2, PVNetTransform
 
 parser = argparse.ArgumentParser(description="Visualize 3D pose")
 parser.add_argument("--img", type=str, required=True)
@@ -15,7 +15,7 @@ args = parser.parse_args()
 # Setup model
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-pvnet = model.PVNet()
+pvnet = PVNet()
 pvnet.load_state_dict(
     torch.load(args.checkpoint, weights_only=True)["model_state_dict"]
 )
@@ -37,9 +37,11 @@ with torch.no_grad():
 
     pred_mask = pred_mask.squeeze()
     prob_mask = (torch.sigmoid(pred_mask) > 0.5).cpu().numpy()
-    binary_mask = torch.from_numpy(prob_mask).to(device=pred_mask.device, dtype=torch.float32)
+    binary_mask = torch.from_numpy(prob_mask).to(
+        device=pred_mask.device, dtype=torch.float32
+    )
 
-    ransac_solver = ransac.PVNetRansac(
+    ransac_solver = PVNetRansac(
         mask=binary_mask, vfield=pred_kp.squeeze(), num_iter=1000
     )
     keypoints = ransac_solver.ransac()

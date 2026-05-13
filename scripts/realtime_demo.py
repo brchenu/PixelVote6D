@@ -1,10 +1,11 @@
 import cv2
 import torch
 import numpy as np
-from model import PVNet
-from ransac import PVNetRansac
-from bop_toolkit.data_transfrom import PVNetTransformV2
-from smoothing import PoseSmoother
+
+from pixelvote6d.models import PVNet
+from pixelvote6d.pose.ransac import PVNetRansac
+from pixelvote6d.dataset.transforms import PVNetTransformV2
+from pixelvote6d.pose.smoothing import PoseSmoother
 
 RANSAC_THRESHOLD = 0.5
 MIN_MASK_PIXELS = 600
@@ -96,9 +97,7 @@ def draw_mask_overlay(img, mask_prob_full, alpha=0.45):
 
 def build_debug_panel(axes_img, keypoints_img, overlay_img, mask_prob_full):
     cell0 = axes_img.copy()
-    cv2.putText(
-        cell0, "pose", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3
-    )
+    cv2.putText(cell0, "pose", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
     cv2.putText(
         cell0, "pose", (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1
     )
@@ -196,6 +195,7 @@ while True:
         display_frame.shape[1],
         pvnet_transform,
     )
+
     overlay_frame = draw_mask_overlay(display_frame.copy(), mask_prob_full)
     orig_keypoints = np.empty((0, 2), dtype=np.float64)
 

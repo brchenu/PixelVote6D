@@ -1,5 +1,6 @@
-import open3d as o3d
 import numpy as np
+import open3d as o3d
+
 
 def _keypoint_spheres(
     keypoints: np.ndarray,
@@ -54,11 +55,13 @@ def pick_keypoints(
     # and BlenderProc records cam_R_m2c relative to that Blender frame.
     # Correct conversion: BOP_X = glTF_X, BOP_Y = -glTF_Z, BOP_Z = glTF_Y
     if model_path.lower().endswith((".glb", ".gltf")):
-        keypoints_mm = np.column_stack([
-            keypoints_mm[:, 0],
-            -keypoints_mm[:, 2],
-            keypoints_mm[:, 1],
-        ])
+        keypoints_mm = np.column_stack(
+            [
+                keypoints_mm[:, 0],
+                -keypoints_mm[:, 2],
+                keypoints_mm[:, 1],
+            ]
+        )
 
     print(keypoints_mm)
 
@@ -69,6 +72,7 @@ def pick_keypoints(
 
     np.savetxt(output_path, keypoints_mm)
 
+
 idx = "000010"
 
 model_root_dir = "/home/brann/projects/bproc/clean_drill"
@@ -78,4 +82,4 @@ pick_keypoints(
     f"{model_root_dir}/clean_model_keypoints.txt",
     8,
     model_unit="m",  # BlenderProc GLB models are in meters; saved as mm for BOP
-) 
+)

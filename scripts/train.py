@@ -1,16 +1,16 @@
-import os
 import time
-import logging
 import torch
+import logging
 import argparse
-from torch.utils.data import ConcatDataset, WeightedRandomSampler
-from bop_toolkit.bop_dataset import BOPDirectDataset, BOPSubSet
-from bop_toolkit.self_label_dataset import SelfLabelDataset
-from model import PVNet
 from pathlib import Path
-from bop_toolkit.data_transfrom import PVNetRandomTranform, PVNetTransform
 
-BASE_DIR = Path(__file__).resolve().parent
+from pixelvote6d.models import PVNet
+from pixelvote6d.dataset import SelfLabelDataset
+from pixelvote6d.dataset import PVNetRandomTransform
+from pixelvote6d.dataset import BOPDirectDataset, BOPSubSet
+from torch.utils.data import ConcatDataset, WeightedRandomSampler
+
+
 
 
 def init_logger(report_path: Path) -> logging.Logger:
@@ -46,8 +46,11 @@ if __name__ == "__main__":
         "--obj-id", type=int, required=True, help="Object ID to train on"
     )
     parser.add_argument(
-        "--dataset", type=str, nargs="+", required=True,
-        help="One or more dataset names (e.g., --dataset drill drill_hd)"
+        "--dataset",
+        type=str,
+        nargs="+",
+        required=True,
+        help="One or more dataset names (e.g., --dataset drill drill_hd)",
     )
     parser.add_argument(
         "--epochs", type=int, required=True, help="Number of training epochs"
@@ -64,7 +67,7 @@ if __name__ == "__main__":
         nargs="+",
         default=None,
         help="Sampling weight for each dataset, in order: --dataset entries then --self-label "
-             "entries. Total count must match. E.g. --weights 0.25 0.25 0.25 0.25",
+        "entries. Total count must match. E.g. --weights 0.25 0.25 0.25 0.25",
     )
     parser.add_argument(
         "--load",
@@ -88,11 +91,17 @@ if __name__ == "__main__":
         "E.g. --self-label dataset/self_label/drill2 dataset/self_label/drill7",
     )
     parser.add_argument(
+        "--dataset-root",
+        type=str,
+        default="dataset",
+        help="Root directory containing dataset folders (default: dataset/ relative to CWD).",
+    )
+    parser.add_argument(
         "--spatial-aug",
         action="store_true",
         default=False,
         help="Add RandomAffine (translate ±15%%, scale 0.8–1.2) to bridge the sim-to-real gap "
-             "caused by Blender always rendering the object centered in the frame.",
+        "caused by Blender always rendering the object centered in the frame.",
     )
 
     args = parser.parse_args()
@@ -112,10 +121,11 @@ if __name__ == "__main__":
     logger = init_logger(report_path)
 
     # --- Dataset & dataloader ---
-    transform = PVNetRandomTranform(spatial_aug=args.spatial_aug)
+    dataset_root = Path(args.dataset_root).resolve()
+    transform = PVNetRandomTransform(spatial_aug=args.spatial_aug)
     datasets = [
         BOPDirectDataset(
-            dataset_dir=os.path.join(BASE_DIR, "dataset", name),
+            dataset_dir=str(dataset_root / name),
             obj_id=args.obj_id,
             transform=transform,
             subset=BOPSubSet.TRAIN,
@@ -148,8 +158,11 @@ if __name__ == "__main__":
         shuffle = False  # mutually exclusive with sampler
 
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, num_workers=10,
-        shuffle=shuffle, sampler=sampler,
+        dataset,
+        batch_size=args.batch_size,
+        num_workers=10,
+        shuffle=shuffle,
+        sampler=sampler,
     )
 
     # --- Model ---
@@ -186,7 +199,9 @@ if __name__ == "__main__":
     logger.info("Run directory    : %s", run_dir)
     logger.info("Device           : %s", device)
     logger.info("Dataset(s)       : %s  (obj_id=%d)", dataset_tag, args.obj_id)
-    all_names = list(args.dataset) + ([Path(d).name for d in args.self_label] if args.self_label else [])
+    all_names = list(args.dataset) + (
+        [Path(d).name for d in args.self_label] if args.self_label else []
+    )
     if args.weights:
         for name, ds, w in zip(all_names, datasets, args.weights):
             logger.info("  %-16s: %d samples, weight=%.2f", name, len(ds), w)
@@ -203,7 +218,9 @@ if __name__ == "__main__":
         )
     else:
         logger.info("Training from scratch  →  total after run: %d", args.epochs)
-    logger.info("Spatial aug      : %s", "on (RandomAffine)" if args.spatial_aug else "off")
+    logger.info(
+        "Spatial aug      : %s", "on (RandomAffine)" if args.spatial_aug else "off"
+    )
     logger.info("=" * 60)
 
     # --- Training loop ---
