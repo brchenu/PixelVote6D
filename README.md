@@ -1,8 +1,29 @@
-# PixelVote6D
+<p align="center">
+  <img src="docs/assets/pixelvote6d.png" alt="PixelVote6D logo" width="420" />
+</p>
 
-PixelVote6D is a from-scratch reimplementation of PVNet for 6D object pose estimation.
+<h1 align="center">PixelVote6D</h1>
 
-The project was built as a research and learning exercise around PyTorch training, synthetic data generation, sim-to-real transfer, vector-field supervision, RANSAC-based keypoint voting, and pose recovery with SolvePnP.
+<p align="center">
+  From-scratch PVNet reimplementation for 6D object pose estimation.
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="PixelVote6D inference demo" width="720" />
+</p>
+
+<p align="center">
+  Offline inference demo showing pose axes, predicted mask, keypoints, and overlay.
+</p>
+
+The project was built mainly as a research and learning exercise to learn and among other things, explore the following topics: 
+
+- PyTorch
+- Model creation & training
+- Transfer learning
+- Dataset creation and synthetic data generation
+- Sim-to-Real transfer
+- etc...
 
 ## Pipeline
 
@@ -28,13 +49,13 @@ pip install -e .
 Train:
 
 ```bash
-python train.py --obj-id 1 --dataset drill drill_hd --epochs 20
+python scripts/train.py --obj-id 1 --dataset drill drill_hd --epochs 20
 ```
 
 Offline inference:
 
 ```bash
-python inference.py \
+python scripts/infer_folder.py \
   --images dataset/realfootage/drill2/frames/ \
   --calib dataset/realfootage/drill2/calibration/ \
   --checkpoint checkpoints/2026-04-02_14-56-01_obj1_drill_hd+drill_cut+sl_drill2+sl_real/checkpoint.pth \
@@ -45,13 +66,13 @@ python inference.py \
 Realtime demo:
 
 ```bash
-python realtime.py
+python scripts/realtime_demo.py
 ```
 
 ## Project Layout
 
-- training and inference entry points currently live at the repository root
-- reusable geometry, model, and dataset code is being migrated into a `src/` package
+- runnable entry points live under `scripts/`
+- reusable geometry, model, and dataset code lives under `src/pixelvote6d/`
 - datasets, checkpoints, and generated outputs stay local and are ignored by Git
 
 ## Further Reading
