@@ -1,12 +1,12 @@
 from pathlib import Path
-from pixelvote6d.dataset import BOPDirectDataset, BOPSubSet
+from pixelvote6d.dataset import BOPDirectDataset, BOPDataSplit
 from pixelvote6d.dataset import PVNetRandomTransform
 from torch.utils.data import ConcatDataset
 from torch.utils.data import WeightedRandomSampler
 
 
 def build_dataset(
-    config: dict, dataset_root: Path
+    config: dict, dataset_root: Path, split: BOPDataSplit = BOPDataSplit.TRAIN
 ) -> tuple[ConcatDataset, list[BOPDirectDataset], list[float]]:
 
     datasets = []
@@ -20,7 +20,7 @@ def build_dataset(
             dataset_dir=str(path),
             obj_id=config["training"]["obj_id"],
             transform=PVNetRandomTransform(spatial=True),
-            subset=BOPSubSet.TRAIN,
+            split=split,
         )
 
         datasets.append(ds)

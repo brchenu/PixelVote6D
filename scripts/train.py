@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 
 from pixelvote6d.models import PVNet
+from pixelvote6d.dataset import BOPDataSplit
 from pixelvote6d.training import build_dataset, build_sampler
 from pixelvote6d.training import init_logger, log_starting_info, create_output_dir
 
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     # --- Dataset
 
     concat_dataset, datasets, weights = build_dataset(
-        config["training"], Path(args.dataset_root)
+        config["training"], Path(args.dataset_root), split=BOPDataSplit.TRAIN
     )
 
     # --- Weighted sampling
