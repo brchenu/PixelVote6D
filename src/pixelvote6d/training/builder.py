@@ -1,8 +1,8 @@
 from pathlib import Path
-from pixelvote6d.dataset import BOPDirectDataset, BOPDataSplit
-from pixelvote6d.dataset import PVNetRandomTransform
 from torch.utils.data import ConcatDataset
 from torch.utils.data import WeightedRandomSampler
+from pixelvote6d.dataset import BOPDirectDataset, BOPDataSplit
+from pixelvote6d.dataset import PVNetRandomTransform, PVNetTransform
 
 
 def build_dataset(
@@ -16,10 +16,15 @@ def build_dataset(
 
         path = dataset_root / entry["path"]
 
+        if split == BOPDataSplit.TRAIN:
+            transform = PVNetRandomTransform(spatial=True)
+        else:
+            transform = PVNetTransform()
+
         ds = BOPDirectDataset(
             dataset_dir=str(path),
             obj_id=config["training"]["obj_id"],
-            transform=PVNetRandomTransform(spatial=True),
+            transform=transform,
             split=split,
         )
 
@@ -31,7 +36,10 @@ def build_dataset(
 
     return ConcatDataset(datasets), datasets, weights
 
-def build_sampler(weights: list[float], datasets: list[BOPDirectDataset]) -> WeightedRandomSampler:
+
+def build_sampler(
+    weights: list[float], datasets: list[BOPDirectDataset]
+) -> WeightedRandomSampler:
     weights = [w / len(weights) for w in weights]  # Normalize weights
 
     sample_weights = []
@@ -39,4 +47,6 @@ def build_sampler(weights: list[float], datasets: list[BOPDirectDataset]) -> Wei
         sample_weights.extend([w] * len(ds))
 
     # weights are extended because WeightedRandomSampler expects a weight for each sample in the concatenated dataset
-    return WeightedRandomSampler(sample_weights, num_samples=sum(len(ds) for ds in datasets))
+    return WeightedRandomSampler(
+        sample_weights, num_samples=sum(len(ds) for ds in datasets)
+    )

@@ -1,0 +1,12 @@
+model:
+  checkpoint: null
+  device: "cuda"
+
+pipeline:
+  mask_min_pixels: 500
+  mask_thresh: 0.5
+  ransac_iter: 512
+
+paths:
+  calibration_dir: null
+  model_keypoints: null

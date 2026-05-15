@@ -6,3 +6,4 @@ assets/
 checkpoints/
 output/
 .vscode/
+*.local.yaml

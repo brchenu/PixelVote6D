@@ -6,15 +6,6 @@ training:
   weight_decay: 0.0001
 
 datasets:
-  - name: "drill_hd"
-    type: "bop" 
-    weight: 0.45
-  
-  - name: "dataset/drill_cut"
-    type: "bop"
-    weight: 0.35
-
-  - name: "drill_synt"
-    type: "pseudo_label"
-    weight: 0.2
-
+  - name: null
+    type: null
+    weight: null
