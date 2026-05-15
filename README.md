@@ -80,8 +80,6 @@ python scripts/realtime_demo.py
 - [Architecture notes](docs/architecture.md)
 - [Training notes](docs/training.md)
 - [RANSAC notes](docs/ransac.md)
-- [Data notes](docs/data.md)
-- [Migration plan](docs/migration-plan.md)
 
 ## Status
 

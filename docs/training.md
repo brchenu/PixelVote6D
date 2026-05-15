@@ -1,52 +1,31 @@
-# Training Notes
+# Training 
 
-## Training Targets
+## Binary Cross-Entropy (BCE) for Mask Prediction
 
-The network predicts two things:
+For per-pixel object masks, each pixel represents a binary classification:
 
-- a binary foreground mask
-- a vector field toward each object keypoint
+0 : background  
+1 : object
 
-The vector loss is only computed on foreground pixels.
+The network predics raw logits for each pixel, which are real numbers, sigmoid activation converts these logits into probabilites [0, 1] (BCE require probabilites as input).
 
-## Mask Loss
+BCE measures the divergence between the predicted probability and the ground truth:
 
-Foreground segmentation is trained with binary cross-entropy on logits using `BCEWithLogitsLoss`.
+- Encourages high probability for object pixels
+- Encourages low probability for background pixels
+- Penalizes confident but wrong predictions more than linear losses like MSE
 
-This is appropriate because each pixel is a binary prediction:
+> In our case we use BCEWithLogitsLoss (PyTorch) which integrates sigmoid + BCE in a numerically stable way, so raw logits can be used directly.
 
-- `0`: background
-- `1`: object
+### When to choose BCE
 
-Using the logits version keeps the optimization numerically stable while still representing a probability after sigmoid.
+- When the target is binary (0/1) per element (pixel, keypoint presence, etc.)
+- When predictions should be interpreted as probabilities
+- When confident mistakes should be penalized heavily
 
-## Vector Field Loss
+## SmoothL1Loss
 
-The vector field is trained with `SmoothL1Loss`.
+Vector loss: Loss only calculated for pixels inside the ground truth mask, the formula looks difference betweeen $V_{pred}$ and $V_{truth}$ 
 
-In practice, the loss is computed channel-wise and then masked so that only foreground pixels contribute. Background pixels are ignored because the target direction is only defined for pixels belonging to the object.
-
-## Why Predict Both Mask And Vector Field
-
-The mask and vector field solve different problems:
-
-- the mask decides which pixels belong to the object
-- the vector field tells each object pixel how to vote toward each keypoint
-
-Without the mask, noisy background vectors would corrupt the RANSAC voting stage.
-
-## Data Sources
-
-The training pipeline supports:
-
-- direct BOP-style rendered or labeled data
-- mixed datasets through concatenation
-- self-labeled datasets generated from inference outputs
-- optional spatial augmentation to reduce the gap between centered synthetic renders and real footage
-
-## Practical Training Notes
-
-- checkpoints store both model state and optimizer state
-- runs are saved into timestamped output folders
-- dataset mixing can be controlled with sampling weights
-- cosine annealing is used to decay the learning rate over a run
+(?) what is $V_{truth}$ since mask can be different
+(?) why use and mask and a vfield and not directly uniquely create vector for pixels in the mask ? why do we need both ? 

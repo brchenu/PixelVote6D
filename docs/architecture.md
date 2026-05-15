@@ -1,69 +1,43 @@
-# Architecture Notes
+# Model architecure 
 
-## Overview
+The PVNet model use a FCN (Fully Convolutional Network)
+ 
+It is based on a "U-Net" like architecture, with en Encoder and a Decoder.
+The Encoder is based on the ResNet18 architecture, its role is to extract features, it compress the input into a meaningful feature map.
 
-The model is a PVNet-style fully convolutional network that predicts:
+The Decoder, is a serie of upsampling layers that bring image back to it's original resolution.
 
-- a foreground mask
-- a 2D vector field for each keypoint
+Input: C, H, W
+Backbone: ResNet18
+Output: 
+- Vector field (C, H, W) where C = 2K + 1, where K is number of keypoints
+- Mask (mask is a probabilty map of pixels, where its the proba that each pixels are part of the detected object)
 
-The full pipeline is:
+ResNet18 is used as a backbone but its modified.
 
-```text
-image -> PVNet model -> RANSAC -> SolvePnP -> 6D pose
-```
+### Output details
 
-## Model Structure
+Vector field 
 
-The network follows a U-Net-like encoder-decoder design.
+For a single keypoint K, every pixels p inside the object, mask is assigned a 2D unit vector $V_k(p)$
 
-- encoder backbone: ResNet18
-- decoder: repeated skip connection, convolution, and upsampling blocks
-- output head: foreground mask and keypoint vector field
+- Keypoint $(x_k, y_k)$
+- Current pixel $(x_p, y_p)$
 
-Input shape:
-
-- `C, H, W`
-
-Output shape:
-
-- vector field: `2K` channels for `K` keypoints
-- mask: `1` channel
-
-That gives a total output channel count of `2K + 1`.
-
-## Why A Vector Field
-
-For a keypoint $k$ with image coordinate $(x_k, y_k)$ and a foreground pixel $p=(x_p, y_p)$, the supervision target is the unit vector pointing from the pixel toward that keypoint:
-
-$$
-V_k(p) = \frac{(x_k - x_p, y_k - y_p)}{\sqrt{(x_k - x_p)^2 + (y_k - y_p)^2}}
+$$ 
+ V_k(p) =  \frac{(x_k - x_p, y_k - y_p)}{\sqrt{(x_k - x_p)² + (y_k - y_p)²}}
 $$
 
-Predicting these local directions is more robust than regressing absolute keypoint coordinates directly from the image.
+The term "field", if done for every pixels you end up with a map directions, looking like a magnetic field.
 
-## Skip Connections
+#### Vfield training data
 
-The current implementation keeps skip features from the ResNet backbone at several resolutions:
+To generate the vector field label data from a list of 3D keypoints with the transformation matrix of the object relative to the camera here are the steps:
 
-- `skip_1`: after `resnet.relu`
-- `skip_2`: after `resnet.layer1`
-- `skip_3`: after `resnet.layer2`
-- deeper features: `layer3`, `layer4`, and bottleneck output
+1. Project keypoints to get 2D info (x_k, y_k)
 
-These skip connections preserve spatial detail that is useful for dense mask and vector-field prediction.
+2. For every pixels (u, v) in yout object mask
+        - calculate the direction towards the keypoints.
+        - normalize it 
 
-## Decoder Summary
-
-The decoder progressively upsamples and fuses encoder features:
-
-1. Fuse bottleneck features with mid-level features.
-2. Upsample and fuse with earlier backbone features.
-3. Upsample to full resolution.
-4. Concatenate with the input image before the final prediction head.
-
-## Backbone Notes
-
-The model uses ResNet18 as a starting point, but the later backbone stages are modified with dilation and stride changes to preserve a denser output resolution than the default classifier version.
-
-This is important because pose estimation relies on dense per-pixel predictions rather than a single global feature vector.
+3. Save this as a 2 channel image, one channel for X and one channel for Y, (if you have 8 keypoints it will gives you 16 channel 8x2 components

@@ -2,7 +2,6 @@ dataset/
 .python-version
 .venv/
 __pycache__/
-assets/
 checkpoints/
 output/
 .vscode/
