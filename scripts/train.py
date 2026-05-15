@@ -1,38 +1,15 @@
 import time
 import torch
-import logging
+import yaml
 import argparse
 from pathlib import Path
 
 from pixelvote6d.models import PVNet
-from pixelvote6d.dataset import SelfLabelDataset
-from pixelvote6d.dataset import PVNetRandomTransform
-from pixelvote6d.dataset import BOPDirectDataset, BOPSubSet
-from torch.utils.data import ConcatDataset, WeightedRandomSampler
+from pixelvote6d.training import build_dataset, build_sampler
+from pixelvote6d.training import init_logger, log_starting_info, create_output_dir
 
 
-
-
-def init_logger(report_path: Path) -> logging.Logger:
-    """Initialize a logger that writes to both console and a file."""
-    logger = logging.getLogger("pvnet_train")
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear()
-    logger.propagate = False
-
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-    file_handler = logging.FileHandler(report_path, mode="w", encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
-
-    return logger
-
-
-def create_run_dir(output_dir: str, run_name: str) -> Path:
+def create_output_dir(output_dir: str, run_name: str) -> Path:
     """Create a unique directory for this training run and return its path."""
     run_dir = Path(output_dir) / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -42,32 +19,24 @@ def create_run_dir(output_dir: str, run_name: str) -> Path:
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train PVNet model")
+
     parser.add_argument(
-        "--obj-id", type=int, required=True, help="Object ID to train on"
-    )
-    parser.add_argument(
-        "--dataset",
+        "--config",
         type=str,
-        nargs="+",
         required=True,
-        help="One or more dataset names (e.g., --dataset drill drill_hd)",
+        help="Path to a YAML config file with training parameters",
     )
     parser.add_argument(
-        "--epochs", type=int, required=True, help="Number of training epochs"
-    )
-    parser.add_argument(
-        "--lr", type=float, default=1e-3, help="Learning rate (default: 1e-3)"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=32, help="Batch size (default: 32)"
-    )
-    parser.add_argument(
-        "--weights",
-        type=float,
-        nargs="+",
+        "--output",
+        type=str,
         default=None,
-        help="Sampling weight for each dataset, in order: --dataset entries then --self-label "
-        "entries. Total count must match. E.g. --weights 0.25 0.25 0.25 0.25",
+        help="Root directory for outputs.",
+    )
+    parser.add_argument(
+        "--dataset-root",
+        type=str,
+        default="/dataset",
+        help="Root directory containing dataset folders",
     )
     parser.add_argument(
         "--load",
@@ -75,90 +44,36 @@ if __name__ == "__main__":
         default=None,
         help="Path to a checkpoint to resume training from",
     )
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default=None,
-        help="Root directory for outputs. A timestamped sub-folder is created for each run. "
-        "Defaults to ./output if not specified.",
-    )
-    parser.add_argument(
-        "--self-label",
-        type=str,
-        nargs="+",
-        default=None,
-        help="One or more batch_infer.py output directories to include as self-labeled data. "
-        "E.g. --self-label dataset/self_label/drill2 dataset/self_label/drill7",
-    )
-    parser.add_argument(
-        "--dataset-root",
-        type=str,
-        default="dataset",
-        help="Root directory containing dataset folders (default: dataset/ relative to CWD).",
-    )
-    parser.add_argument(
-        "--spatial-aug",
-        action="store_true",
-        default=False,
-        help="Add RandomAffine (translate ±15%%, scale 0.8–1.2) to bridge the sim-to-real gap "
-        "caused by Blender always rendering the object centered in the frame.",
-    )
 
     args = parser.parse_args()
 
-    # --- Output directory setup ---
-    output_base = Path(args.output_dir) if args.output_dir else Path.cwd() / "output"
-    dataset_tag = "+".join(args.dataset)
-    if args.self_label:
-        sl_names = [Path(d).name for d in args.self_label]
-        dataset_tag += "+sl_" + "+sl_".join(sl_names)
-    run_name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}_obj{args.obj_id}_{dataset_tag}"
-    run_dir = create_run_dir(str(output_base), run_name)
+    # --- Load and parse config
+    with open(args.config, "r") as f:
+        config = yaml.safe_load(f)
 
-    report_path = run_dir / "report.txt"
-    checkpoint_path = run_dir / "checkpoint.pth"
+    output_dir = create_output_dir(Path(args.output), Path(args.config))
+    report_path = output_dir / "report.txt"
 
     logger = init_logger(report_path)
 
-    # --- Dataset & dataloader ---
-    dataset_root = Path(args.dataset_root).resolve()
-    transform = PVNetRandomTransform(spatial_aug=args.spatial_aug)
-    datasets = [
-        BOPDirectDataset(
-            dataset_dir=str(dataset_root / name),
-            obj_id=args.obj_id,
-            transform=transform,
-            subset=BOPSubSet.TRAIN,
-        )
-        for name in args.dataset
-    ]
-    dataset = ConcatDataset(datasets) if len(datasets) > 1 else datasets[0]
+    # --- Dataset
 
-    # --- Self-labeled datasets ---
-    if args.self_label:
-        for sl_dir in args.self_label:
-            sl_ds = SelfLabelDataset(infer_dir=sl_dir, augment=True)
-            datasets.append(sl_ds)
-        # Recompute concat with the added self-label datasets
-        dataset = ConcatDataset(datasets)
+    concat_dataset, datasets, weights = build_dataset(
+        config["training"], Path(args.dataset_root)
+    )
 
-    # --- Weighted sampling ---
-    sampler = None
-    shuffle = True
-    if args.weights is not None:
-        assert len(args.weights) == len(datasets), (
-            f"Number of weights ({len(args.weights)}) must match "
-            f"total number of datasets ({len(datasets)}): "
-            f"{len(args.dataset)} --dataset + {len(args.self_label or [])} --self-label"
-        )
-        sample_weights = []
-        for ds, w in zip(datasets, args.weights):
-            sample_weights.extend([w / len(ds)] * len(ds))
-        sampler = WeightedRandomSampler(sample_weights, num_samples=len(dataset))
-        shuffle = False  # mutually exclusive with sampler
+    # --- Weighted sampling
+
+    # Weights Sample only if weights are not all default (1.0)
+    if any(w != 1.0 for w in weights):
+        sampler = build_sampler(weights, datasets)
+        shuffle = False
+    else:
+        sampler = None
+        shuffle = True
 
     dataloader = torch.utils.data.DataLoader(
-        dataset,
+        concat_dataset,
         batch_size=args.batch_size,
         num_workers=10,
         shuffle=shuffle,
@@ -167,12 +82,14 @@ if __name__ == "__main__":
 
     # --- Model ---
     pvnet = PVNet()
-    prev_epochs = 0
+
+    total_epochs = config["epochs"]
 
     if args.load:
         checkpoint = torch.load(args.load, weights_only=True)
         pvnet.load_state_dict(checkpoint["model_state_dict"])
-        prev_epochs = checkpoint.get("epoch", 0) + 1
+        resumed_epochs = checkpoint.get("epoch", 0)
+        total_epochs = resumed_epochs + args.epochs
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pvnet = pvnet.to(device)
@@ -180,6 +97,7 @@ if __name__ == "__main__":
     # --- Loss & optimizer ---
     bce_loss = torch.nn.BCEWithLogitsLoss()
     smooth_l1_loss = torch.nn.SmoothL1Loss(reduction="none")
+
     optimizer = torch.optim.Adam(pvnet.parameters(), lr=args.lr)
 
     if args.load and "optimizer_state_dict" in checkpoint:
@@ -194,34 +112,7 @@ if __name__ == "__main__":
     if args.load and "scheduler_state_dict" in checkpoint:
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
-    # --- Log run configuration ---
-    logger.info("=" * 60)
-    logger.info("Run directory    : %s", run_dir)
-    logger.info("Device           : %s", device)
-    logger.info("Dataset(s)       : %s  (obj_id=%d)", dataset_tag, args.obj_id)
-    all_names = list(args.dataset) + (
-        [Path(d).name for d in args.self_label] if args.self_label else []
-    )
-    if args.weights:
-        for name, ds, w in zip(all_names, datasets, args.weights):
-            logger.info("  %-16s: %d samples, weight=%.2f", name, len(ds), w)
-    logger.info("Dataset size     : %d samples", len(dataset))
-    logger.info("Batch size       : %d", args.batch_size)
-    logger.info("Learning rate    : %g", args.lr)
-    logger.info("Epochs this run  : %d", args.epochs)
-    if args.load:
-        logger.info("Resumed from     : %s", args.load)
-        logger.info(
-            "Epochs in checkpoint : %d  →  total after run: %d",
-            prev_epochs,
-            prev_epochs + args.epochs,
-        )
-    else:
-        logger.info("Training from scratch  →  total after run: %d", args.epochs)
-    logger.info(
-        "Spatial aug      : %s", "on (RandomAffine)" if args.spatial_aug else "off"
-    )
-    logger.info("=" * 60)
+    log_starting_info(logger, config, len(concat_dataset), resuming=(args.load is not None))
 
     # --- Training loop ---
     start_time = time.time()
@@ -265,8 +156,8 @@ if __name__ == "__main__":
         logger.info(
             "Epoch %d/%d (total %d) | mask_loss=%.6f | vfield_loss=%.6f | lr=%.2e",
             epoch + 1,
-            args.epochs,
-            prev_epochs + epoch + 1,
+            config["epochs"],
+            total_epochs,
             avg_mask_loss,
             avg_vfield_loss,
             scheduler.get_last_lr()[0],
@@ -275,9 +166,10 @@ if __name__ == "__main__":
     logger.info("Training completed in %.2f seconds", time.time() - start_time)
 
     # --- Save checkpoint ---
+    checkpoint_path = output_dir / "checkpoint.pth"
     torch.save(
         {
-            "epoch": prev_epochs + args.epochs - 1,
+            "epoch": total_epochs,
             "model_state_dict": pvnet.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
