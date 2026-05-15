@@ -1,3 +1,23 @@
+"""
+Keypoint picker for 3D models.
+
+Samples a set of keypoints from a 3D mesh using Farthest Point Sampling (FPS)
+and saves them to a .txt file in BOP format (millimeters).
+
+The workflow is:
+  1. The mesh is sampled into a point cloud and displayed for inspection.
+  2. FPS selects N well-spread keypoints from the cloud.
+  3. Keypoints are converted to mm (if the model is in meters) and axis-corrected
+     for glTF/GLB models exported from Blender/BlenderProc.
+  4. The final keypoints are visualized as red spheres on the mesh, then saved.
+
+These keypoints are consumed by BOPDirectDataset during training and by the
+inference/demo scripts for PnP pose estimation.
+
+Usage:
+    python keypoints_picker.py <model_path> <output_path> [--num-keypoints N] [--unit mm|m]
+"""
+import argparse
 import numpy as np
 import open3d as o3d
 
@@ -73,13 +93,11 @@ def pick_keypoints(
     np.savetxt(output_path, keypoints_mm)
 
 
-idx = "000010"
+parser = argparse.ArgumentParser(description="Pick keypoints from a 3D model using FPS")
+parser.add_argument("model_path", type=str, help="Path to the 3D model (.ply, .obj, .glb, ...)")
+parser.add_argument("output_path", type=str, help="Path where the keypoints .txt will be saved")
+parser.add_argument("--num-keypoints", type=int, default=8, help="Number of keypoints to pick (default: 8)")
+parser.add_argument("--unit", type=str, default="mm", choices=["mm", "m"], help="Unit of the model coordinates (default: mm)")
+args = parser.parse_args()
 
-model_root_dir = "/home/brann/projects/bproc/clean_drill"
-
-pick_keypoints(
-    f"{model_root_dir}/model.glb",
-    f"{model_root_dir}/clean_model_keypoints.txt",
-    8,
-    model_unit="m",  # BlenderProc GLB models are in meters; saved as mm for BOP
-)
+pick_keypoints(args.model_path, args.output_path, args.num_keypoints, model_unit=args.unit)
