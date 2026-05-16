@@ -43,11 +43,20 @@ The repository tries to stay as simple and readable as possible, minimal abstrac
 
 ## Quick Start
 
-Install dependencies in your environment:
+Install dependencies:
 
 ```bash
 pip install -e .
 ```
+
+**Get a dataset.** All official BOP datasets are hosted on the [BOP HuggingFace Hub](https://huggingface.co/bop-benchmark). Download any of them with:
+
+```bash
+pip install huggingface-hub
+huggingface-cli download bop-benchmark/ycbv --repo-type dataset --local-dir dataset/ycbv
+```
+
+Replace `ycbv` with any dataset name (`lm`, `lmo`, `tless`, `hope`, `hb`, ...).
 
 Train:
 
